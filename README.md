@@ -20,7 +20,7 @@ Note: browsers only allow camera access on `localhost` or HTTPS. To scan with yo
 - **Barcode scanner**: tap the scan icon in the food search (or Scan on the Foods tab), point the camera at a product, and the nutrition facts are fetched from Open Food Facts (good coverage of Chilean products). You can also type the number under the barcode. Unknown products open an empty form so you can copy the label; the barcode is saved with the food, so next time it is found instantly.
 - **Gym**: routines (Push / Pull / Legs included), workout logger with previous-session hints, rest timer, history with volume and "repeat" button.
 - **Progress**: body weight trend with a 7-day average, calories vs goal for the last 14 days, per-exercise top-set chart, 7-day stats, personal bests.
-- **Settings**: goals (manual or calculated from your profile with Mifflin-St Jeor), kg/lb, rest timer length, theme, language, JSON export/import.
+- **Settings**: your name (used for the greeting and shown on your account), goals (manual or calculated from your profile with Mifflin-St Jeor), kg/lb, rest timer length, theme, language, JSON export/import.
 - **Account + cloud sync** (optional): sign in with email and password and your data follows you across devices. Works offline; changes sync when you are back online. See "Cloud sync" below to turn it on.
 
 ## Hosting it for friends

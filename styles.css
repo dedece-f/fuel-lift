@@ -251,6 +251,8 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
 
 /* ---------- Today ---------- */
 .date-nav { display: flex; align-items: center; gap: 4px; }
+.avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--fat)); color: #fff; font-weight: 700; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; margin-right: 6px; flex-shrink: 0; }
+.sidebar-foot .avatar { width: 28px; height: 28px; font-size: 13px; margin-right: 0; }
 .date-nav .label { min-width: 120px; text-align: center; font-weight: 600; }
 
 .kcal-card { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 18px; align-items: center; }

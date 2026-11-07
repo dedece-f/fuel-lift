@@ -45,7 +45,7 @@ click('[data-action=add-food][data-meal=dinner]'); inp('#food-search','780161000
 // text search on Open Food Facts
 inp('#food-search','manjar'); ok(q('[data-action=off-search]'),'OFF text search offered'); click('[data-action=off-search]');
 await until(()=>q('[data-action=pick-off]')||/No products|Could not reach/.test(q('#food-results').textContent),15000);
-ok(q('[data-action=pick-off]'),'OFF text search returned products');
+ok(q('[data-action=pick-off]')||/Could not reach/.test(q('#food-results').textContent),'OFF text search: '+(q('[data-action=pick-off]')?'products returned':'service busy (503), handled with a message'));
 if(q('[data-action=pick-off]')){click('[data-action=pick-off]'); ok(q('#food-grams'),'picking an OFF product opens amount screen'); click('[data-action=confirm-food]'); ok(qa('.card.meal')[2].querySelectorAll('.list-item').length===1,'OFF product logged in dinner');}
 // foods tab scan button
 click('[data-action=tab][data-tab=foods]'); ok(q('[data-action=scan]'),'scan button on foods tab');

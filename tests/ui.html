@@ -88,6 +88,8 @@ click('[data-action=tab][data-tab=settings]'); click('[data-action=apply-calc]')
 click('[data-action=set-units][data-v=lb]'); click('[data-action=tab][data-tab=progress]'); ok(/lb/.test(qa('.tiles .tile')[0].textContent),'lb units shown');
 click('[data-action=tab][data-tab=settings]'); click('[data-action=set-units][data-v=kg]');
 ok(/Cloud sync is not set up/.test(q('#main').textContent),'account card explains sync is off');
+inp('[data-field=pf-name]','David'); click('[data-action=tab][data-tab=today]'); ok(/Good (morning|afternoon|evening), David/.test(q('.page-head .sub').textContent),'greeting uses the name ('+q('.page-head .sub').textContent+')'); ok(q('.avatar')&&q('.avatar').textContent==='D','avatar shows initial'); click('.avatar'); ok(/Settings/.test(q('h1').textContent),'avatar opens settings');
+click('[data-action=set-lang][data-v=es]'); click('[data-action=tab][data-tab=today]'); ok(/Buen(os|as) (días|tardes|noches), David/.test(q('.page-head .sub').textContent),'spanish greeting'); click('[data-action=tab][data-tab=settings]'); click('[data-action=set-lang][data-v=en]');
 click('[data-action=set-lang][data-v=es]'); ok(/Ajustes/.test(q('h1').textContent)&&/Idioma/.test(q('#main').textContent),'spanish switch'); click('[data-action=set-lang][data-v=en]');
 // leave an active workout
 click('[data-action=tab][data-tab=gym]'); click('[data-action=start-routine][data-id=r_legs]'); inp('[data-field=set-weight][data-ei="0"][data-si="0"]','100'); inp('[data-field=set-reps][data-ei="0"][data-si="0"]','8'); click('[data-action=toggle-set][data-ei="0"][data-si="0"]'); click('[data-action=rest-skip]');

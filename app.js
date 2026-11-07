@@ -128,6 +128,9 @@
     'Move up': 'Subir', 'Move down': 'Bajar', 'Daily': 'Diario', '7-day average': 'Promedio 7 días', 'Lifts': 'Cargas', 'Top set weight per session': 'Peso máximo por sesión',
     'Log the same exercise in two sessions to see its trend.': 'Registra el mismo ejercicio en dos sesiones para ver su tendencia.', 'No lifts with weight yet': 'Aún no hay cargas registradas',
     'New version available': 'Hay una versión nueva', 'Reload': 'Recargar', 'Items': 'Alimentos',
+    'Your name': 'Tu nombre', 'e.g. David': 'ej. David', 'Shown in the greeting and on your account': 'Aparece en el saludo y en tu cuenta',
+    'Good morning, {name}': 'Buenos días, {name}', 'Good afternoon, {name}': 'Buenas tardes, {name}', 'Good evening, {name}': 'Buenas noches, {name}',
+    'Open settings': 'Abrir ajustes',
   };
   const FOOD_ES = {
     'Chicken breast, cooked': 'Pechuga de pollo, cocida', 'Turkey breast': 'Pechuga de pavo', 'Beef, lean, cooked': 'Carne de vacuno magra, cocida', 'Pork chop, cooked': 'Chuleta de cerdo, cocida',
@@ -162,6 +165,9 @@
   const fmtInt = (n) => Math.round(n).toLocaleString(locale());
   const fmtDate = (k, opts = { weekday: 'short', month: 'short', day: 'numeric' }) => cap(parseKey(k).toLocaleDateString(locale(), opts));
   const relDay = (k) => { const td = dateKey(); if (k === td) return t('Today'); if (k === addDays(td, -1)) return t('Yesterday'); if (k === addDays(td, 1)) return t('Tomorrow'); return fmtDate(k); };
+  const userName = () => String(state.settings.profile.name || '').trim();
+  const greeting = () => { const n = userName(); if (!n) return ''; const h = new Date().getHours(); return t(h < 12 ? 'Good morning, {name}' : h < 19 ? 'Good afternoon, {name}' : 'Good evening, {name}', { name: esc(n) }); };
+  const avatar = () => { const n = userName(); return n ? `<button class="avatar" data-action="tab" data-tab="settings" aria-label="${t('Open settings')}" title="${esc(n)}">${esc(n.charAt(0).toUpperCase())}</button>` : ''; };
   // Display names for built-in data (translated while the item is untouched)
   const foodName = (f) => (lang() === 'es' && f.builtin && FOOD_ES[f.name]) || f.name;
   const exName = (e) => (lang() === 'es' && e.builtin && EX_ES[e.name]) || e.name;
@@ -219,7 +225,7 @@
     settings: {
       theme: 'system', units: 'kg', restSeconds: 90, lang: (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en',
       goals: { kcal: 2200, p: 150, c: 240, f: 70 },
-      profile: { sex: 'male', age: 28, height: 178, weight: 78, activity: 1.55, goal: 'maintain' },
+      profile: { name: '', sex: 'male', age: 28, height: 178, weight: 78, activity: 1.55, goal: 'maintain' },
     },
     foods: SEED_FOODS.map((f) => ({ ...f })),            // fresh copies: the seeds must never be mutated
     exercises: SEED_EXERCISES.map((e) => ({ ...e })),
@@ -286,7 +292,7 @@
   }
   function applyLang() {
     document.documentElement.lang = lang();
-    const foot = $('#sidebar-foot'); if (foot) foot.textContent = t('Data is stored locally in this browser.');
+    const foot = $('#sidebar-foot'); if (foot) foot.innerHTML = (userName() ? `<div class="row" style="gap:8px;margin-bottom:8px;color:var(--text)">${avatar()}<span style="font-weight:600">${esc(userName())}</span></div>` : '') + t('Data is stored locally in this browser.');
   }
 
   function renderNav() {
@@ -350,8 +356,8 @@
 
     return `
       <div class="page-head">
-        <div><h1>${relDay(ui.date)}</h1><div class="sub">${fmtDate(ui.date, { weekday: 'long', month: 'long', day: 'numeric' })}</div></div>
-        <div class="date-nav">
+        <div><h1>${relDay(ui.date)}</h1><div class="sub">${ui.date === dateKey() && greeting() ? greeting() + ' · ' : ''}${fmtDate(ui.date, { weekday: 'long', month: 'long', day: 'numeric' })}</div></div>
+        <div class="date-nav">${avatar()}
           <button class="icon-btn" data-action="date" data-n="-1" aria-label="${t('Previous day')}">${I.left}</button>
           ${ui.date !== dateKey() ? `<button class="btn ghost sm" data-action="date-today">${t('Today')}</button>` : ''}
           <button class="icon-btn" data-action="date" data-n="1" aria-label="${t('Next day')}">${I.right}</button>
@@ -1137,7 +1143,7 @@
         ${st === 'error' ? `<p class="small" style="color:var(--danger)">${esc(cloud.error)}</p>` : ''}
         <div class="row wrap"><button class="btn primary sm" data-action="auth-signin" ${cloud.busy ? 'disabled' : ''}>${t('Sign in')}</button><button class="btn sm" data-action="auth-signup" ${cloud.busy ? 'disabled' : ''}>${t('Create account')}</button><span class="spacer"></span><button class="btn ghost sm" data-action="auth-reset">${t('Forgot password?')}</button></div>
       </div>`;
-    else body = `<div class="row between wrap"><div><div style="font-weight:500">${t('Signed in as {email}', { email: esc(cloud.user.email || '') })}</div><div class="small ${st === 'error' ? '' : 'muted'}" style="${st === 'error' ? 'color:var(--danger)' : ''}">${statusLine()}</div></div><button class="btn sm" data-action="auth-signout">${t('Sign out')}</button></div>`;
+    else body = `<div class="row between wrap"><div class="row" style="gap:10px">${avatar()}<div><div style="font-weight:500">${userName() ? esc(userName()) + ' · ' : ''}${t('Signed in as {email}', { email: esc(cloud.user.email || '') })}</div><div class="small ${st === 'error' ? '' : 'muted'}" style="${st === 'error' ? 'color:var(--danger)' : ''}">${statusLine()}</div></div></div><button class="btn sm" data-action="auth-signout">${t('Sign out')}</button></div>`;
     return `<div class="card"><h2 style="margin-bottom:6px">${t('Account')}</h2><p class="small muted" style="margin-bottom:12px">${t('Your log, foods, routines and workouts follow you on every device where you sign in.')}</p>${body}</div>`;
   }
   const modalSyncChoice = () => `<div class="modal-head"><h2>${t('Which data should we keep?')}</h2></div><p style="color:var(--text-2)">${t('This device already has data, and your account also has data in the cloud. Pick one; the other copy is replaced.')}</p><div class="modal-foot" style="flex-direction:column"><button class="btn primary" data-action="sync-cloud">${t('Use cloud data')}</button><button class="btn" data-action="sync-device">${t('Use this device’s data')}</button></div>`;
@@ -1175,6 +1181,7 @@
       </div>
       <div class="card">
         <h2 style="margin-bottom:6px">${t('Preferences')}</h2>
+        <div class="setting-row"><div><div class="lbl">${t('Your name')}</div><div class="desc">${t('Shown in the greeting and on your account')}</div></div><input class="input" style="width:150px" data-field="pf-name" value="${esc(p.name || '')}" placeholder="${t('e.g. David')}" autocomplete="given-name" /></div>
         <div class="setting-row"><div><div class="lbl">${t('Language')}</div></div><div class="seg"><button class="${s.lang === 'en' ? 'active' : ''}" data-action="set-lang" data-v="en">English</button><button class="${s.lang === 'es' ? 'active' : ''}" data-action="set-lang" data-v="es">Español</button></div></div>
         <div class="setting-row"><div><div class="lbl">${t('Weight units')}</div><div class="desc">${t('For body weight and lifts')}</div></div><div class="seg"><button class="${s.units === 'kg' ? 'active' : ''}" data-action="set-units" data-v="kg">kg</button><button class="${s.units === 'lb' ? 'active' : ''}" data-action="set-units" data-v="lb">lb</button></div></div>
         <div class="setting-row"><div><div class="lbl">${t('Rest timer')}</div><div class="desc">${t('Starts when you check a set. 0 to disable.')}</div></div><div class="input-suffix"><input class="input" type="number" inputmode="numeric" data-field="rest-seconds" value="${s.restSeconds}" /><span>${t('sec')}</span></div></div>
@@ -1326,6 +1333,7 @@
       case 'goal-c': state.settings.goals.c = Math.max(0, Math.round(num(v))); save(); break;
       case 'goal-f': state.settings.goals.f = Math.max(0, Math.round(num(v))); save(); break;
       case 'rest-seconds': state.settings.restSeconds = Math.max(0, Math.round(num(v))); save(); break;
+      case 'pf-name': state.settings.profile.name = v; save(); break;
       case 'pf-sex': state.settings.profile.sex = v; save(); render(); break;
       case 'pf-age': state.settings.profile.age = num(v); save(); break;
       case 'pf-height': state.settings.profile.height = num(v); save(); break;
@@ -1342,7 +1350,7 @@
   document.addEventListener('change', (ev) => {
     const el = ev.target.closest('[data-field]'); if (!el) return;
     const f = el.dataset.field;
-    if (['pf-age', 'pf-height', 'pf-weight', 'goal-kcal', 'goal-p', 'goal-c', 'goal-f'].includes(f) && ui.tab === 'settings') render();
+    if (['pf-name', 'pf-age', 'pf-height', 'pf-weight', 'goal-kcal', 'goal-p', 'goal-c', 'goal-f'].includes(f) && ui.tab === 'settings') render();
     if (f === 'import-file') {
       const file = el.files[0]; if (!file) return;
       file.text().then((txt) => {
