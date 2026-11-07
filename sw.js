@@ -1,7 +1,7 @@
 /* Fuel & Lift service worker: makes the app open offline and load instantly.
    Same-origin files are served from cache and refreshed in the background
    (stale-while-revalidate); the app shows a "new version" toast when an update lands. */
-const VERSION = 'fl-v6';
+const VERSION = 'fl-v7';
 const SHELL = ['./', './index.html', './styles.css', './app.js', './firebase-config.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -18,7 +18,8 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.open(VERSION).then(async (cache) => {
       const cached = await cache.match(req, { ignoreSearch: true });
-      const network = fetch(req).then((res) => { if (res && res.ok) cache.put(req, res.clone()); return res; }).catch(() => null);
+      // Revalidate with the server (ETag) instead of trusting the HTTP cache, so deploys show up on the next load.
+      const network = fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }).then((res) => { if (res && res.ok) cache.put(req, res.clone()); return res; }).catch(() => null);
       if (cached) { event.waitUntil(network); return cached; }
       const res = await network;
       return res || (req.mode === 'navigate' ? cache.match('./index.html') : Response.error());
