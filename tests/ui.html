@@ -6,7 +6,7 @@
 <div class="rest-pill" id="rest-pill" hidden></div><div class="toast" id="toast" hidden></div>
 <pre id="test-out" style="position:fixed;top:0;left:0;z-index:999;background:#fff;color:#000;font-size:11px;max-height:40vh;overflow:auto"></pre>
 <script>
-window.__FUEL_LIFT_TEST=true; window.__errors=[]; window.onerror=(m,s,l,c)=>{window.__errors.push(m+' @'+l+':'+c)};
+window.__FUEL_LIFT_TEST=true; window.__errors=[]; window.FUEL_LIFT_FIREBASE={apiKey:'test-only',projectId:'test-only'}; location.hash='#settings'; window.onerror=(m,s,l,c)=>{window.__errors.push(m+' @'+l+':'+c)};
 // seed: 12 days of logs, weights, one workout
 (function(){const pad=n=>String(n).padStart(2,'0');const key=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
 const logs={},weights=[];for(let i=1;i<=12;i++){const d=new Date();d.setDate(d.getDate()-i);const k=key(d);
@@ -25,6 +25,8 @@ const q=s=>document.querySelector(s), qa=s=>document.querySelectorAll(s);
 const click=s=>{const e=q(s); if(!e){out.push('FAIL missing '+s);return;} e.click();};
 const inp=(s,v)=>{const e=q(s); if(!e){out.push('FAIL missing input '+s);return;} e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));};
 try{
+ok(/Settings/.test(q('h1').textContent)&&q('[data-action=auth-signin]'),'booting on #settings with a config shows the sign-in form (not the not-configured note)');
+click('[data-action=tab][data-tab=today]');
 ok(q('.ring'),'today renders ring');
 ok(qa('.card.meal').length===4,'4 meal cards');
 click('[data-action=add-food][data-meal=lunch]'); ok(!q('#modal-root').hidden,'add food modal opens');
@@ -87,7 +89,7 @@ inp('#weight-input','77.4'); click('[data-action=log-weight]'); ok(/77.4/.test(q
 click('[data-action=tab][data-tab=settings]'); click('[data-action=apply-calc]'); ok(q('[data-field=goal-kcal]').value!=='2200','calc applied ('+q('[data-field=goal-kcal]').value+')');
 click('[data-action=set-units][data-v=lb]'); click('[data-action=tab][data-tab=progress]'); ok(/lb/.test(qa('.tiles .tile')[0].textContent),'lb units shown');
 click('[data-action=tab][data-tab=settings]'); click('[data-action=set-units][data-v=kg]');
-ok(/Cloud sync is not set up/.test(q('#main').textContent),'account card explains sync is off');
+ok(q('[data-action=auth-signin]')&&q('[data-action=auth-signup]'),'account card shows sign in / create account');
 inp('[data-field=pf-name]','David'); click('[data-action=tab][data-tab=today]'); ok(/Good (morning|afternoon|evening), David/.test(q('.page-head .sub').textContent),'greeting uses the name ('+q('.page-head .sub').textContent+')'); ok(q('.avatar')&&q('.avatar').textContent==='D','avatar shows initial'); click('.avatar'); ok(/Settings/.test(q('h1').textContent),'avatar opens settings');
 click('[data-action=set-lang][data-v=es]'); click('[data-action=tab][data-tab=today]'); ok(/Buen(os|as) (días|tardes|noches), David/.test(q('.page-head .sub').textContent),'spanish greeting'); click('[data-action=tab][data-tab=settings]'); click('[data-action=set-lang][data-v=en]');
 click('[data-action=set-lang][data-v=es]'); ok(/Ajustes/.test(q('h1').textContent)&&/Idioma/.test(q('#main').textContent),'spanish switch'); click('[data-action=set-lang][data-v=en]');

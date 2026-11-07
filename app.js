@@ -1047,7 +1047,7 @@
     if (!cfg && !fake) { cloud.status = 'off'; return; }
     // Load the SDK right away only when this device has signed in before; otherwise wait until someone taps Sign in.
     if (fake || sync.uid || sync.everSignedIn) return ensureCloud();
-    cloud.status = 'idle';
+    cloud.status = 'idle'; if (ui.tab === 'settings') render();
   }
   async function ensureCloud() {
     if (cloud.adapter) return true;
