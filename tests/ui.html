@@ -88,10 +88,11 @@ click('[data-action=tab][data-tab=settings]'); click('[data-action=apply-calc]')
 click('[data-action=set-units][data-v=lb]'); click('[data-action=tab][data-tab=progress]'); ok(/lb/.test(qa('.tiles .tile')[0].textContent),'lb units shown');
 click('[data-action=tab][data-tab=settings]'); click('[data-action=set-units][data-v=kg]');
 ok(/Cloud sync is not set up/.test(q('#main').textContent),'account card explains sync is off');
-click('[data-action=reset]'); click('[data-action=confirm-yes]'); ok(__FL.state.foods.length===57&&__FL.state.foods.every(f=>f.builtin)&&Object.keys(__FL.state.logs).length===0,'reset restores the pristine built-in library ('+__FL.state.foods.length+')'); click('[data-action=set-lang][data-v=en]');
 click('[data-action=set-lang][data-v=es]'); ok(/Ajustes/.test(q('h1').textContent)&&/Idioma/.test(q('#main').textContent),'spanish switch'); click('[data-action=set-lang][data-v=en]');
 // leave an active workout
 click('[data-action=tab][data-tab=gym]'); click('[data-action=start-routine][data-id=r_legs]'); inp('[data-field=set-weight][data-ei="0"][data-si="0"]','100'); inp('[data-field=set-reps][data-ei="0"][data-si="0"]','8'); click('[data-action=toggle-set][data-ei="0"][data-si="0"]'); click('[data-action=rest-skip]');
+// reset is last so screenshot mode (#shot:<tab>) still has data; skipped in that mode
+if(!SHOT.startsWith('#shot')){click('[data-action=tab][data-tab=settings]'); click('[data-action=reset]'); click('[data-action=confirm-yes]'); ok(__FL.state.foods.length===57&&__FL.state.foods.every(f=>f.builtin)&&Object.keys(__FL.state.logs).length===0&&!__FL.state.activeWorkout,'reset restores the pristine built-in library ('+__FL.state.foods.length+')');}
 }catch(e){out.push('EXC '+e.message+' '+(e.stack||'').split('\n')[1]);}
 out.push('ERRORS '+JSON.stringify(window.__errors)); out.push('DONE');
 document.getElementById('test-out').textContent=out.join('\n');
