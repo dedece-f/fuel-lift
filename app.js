@@ -100,6 +100,22 @@
     'Calories are missing in the database. Copy them from the label.': 'Faltan las calorías en la base de datos. Cópialas de la etiqueta.',
     'Found on Open Food Facts. Check the values against the label, then save.': 'Encontrado en Open Food Facts. Revisa los valores con la etiqueta y guarda.',
     'Could not reach Open Food Facts. Check your connection and try again.': 'No se pudo conectar con Open Food Facts. Revisa tu conexión e intenta de nuevo.',
+    // account / sync
+    'Account': 'Cuenta', 'Your log, foods, routines and workouts follow you on every device where you sign in.': 'Tu registro, alimentos, rutinas y entrenamientos te siguen en todos los dispositivos donde inicies sesión.',
+    'Cloud sync is not set up for this copy of the app. See the README to connect a Firebase project.': 'La sincronización en la nube no está configurada en esta copia de la app. Mira el README para conectar un proyecto de Firebase.',
+    'Loading…': 'Cargando…', 'Email': 'Correo', 'Password': 'Contraseña', 'Sign in': 'Iniciar sesión', 'Create account': 'Crear cuenta', 'Forgot password?': '¿Olvidaste tu contraseña?',
+    'Sign out': 'Cerrar sesión', 'Signed in as {email}': 'Sesión iniciada como {email}', 'Synced': 'Sincronizado', 'Syncing…': 'Sincronizando…',
+    'Offline. Changes will sync when you are back online.': 'Sin conexión. Los cambios se sincronizarán al reconectar.', 'Sync error: {msg}': 'Error de sincronización: {msg}',
+    'Enter your email and password': 'Ingresa tu correo y contraseña', 'Password must be at least 6 characters': 'La contraseña debe tener al menos 6 caracteres',
+    'Enter your email first': 'Primero ingresa tu correo', 'Password reset email sent': 'Te enviamos un correo para restablecer la contraseña',
+    'Welcome back!': '¡Hola de nuevo!', 'Account created': 'Cuenta creada', 'Signed out': 'Sesión cerrada',
+    'Wrong email or password': 'Correo o contraseña incorrectos', 'That email is already registered': 'Ese correo ya está registrado', 'That email looks invalid': 'Ese correo no parece válido',
+    'Too many attempts, try again later': 'Demasiados intentos, prueba más tarde', 'Network error, check your connection': 'Error de red, revisa tu conexión',
+    'Could not load the sync module': 'No se pudo cargar el módulo de sincronización', 'Permission denied (check the Firestore rules)': 'Permiso denegado (revisa las reglas de Firestore)',
+    'Which data should we keep?': '¿Qué datos conservamos?',
+    'This device already has data, and your account also has data in the cloud. Pick one; the other copy is replaced.': 'Este dispositivo ya tiene datos y tu cuenta también tiene datos en la nube. Elige uno; la otra copia se reemplaza.',
+    'Use cloud data': 'Usar los datos de la nube', 'Use this device’s data': 'Usar los datos de este dispositivo',
+    'This device only. Your cloud data is kept; sign in again to get it back.': 'Solo este dispositivo. Tus datos en la nube se conservan; vuelve a iniciar sesión para recuperarlos.',
   };
   const FOOD_ES = {
     'Chicken breast, cooked': 'Pechuga de pollo, cocida', 'Turkey breast': 'Pechuga de pavo', 'Beef, lean, cooked': 'Carne de vacuno magra, cocida', 'Pork chop, cooked': 'Chuleta de cerdo, cocida',
@@ -214,7 +230,7 @@
       return { ...d, ...s, settings: { ...d.settings, ...s.settings, goals: { ...d.settings.goals, ...(s.settings?.goals || {}) }, profile: { ...d.settings.profile, ...(s.settings?.profile || {}) } } };
     } catch { return defaultState(); }
   }
-  function save() { localStorage.setItem(KEY, JSON.stringify(state)); }
+  function save() { localStorage.setItem(KEY, JSON.stringify(state)); syncDetectChanges(); }
 
   /* =========================== Units =========================== */
   const KG_LB = 2.2046226218;
@@ -814,6 +830,210 @@
     });
   }
 
+  /* =========================== Cloud sync (Firebase) =========================== */
+  // Each section (settings, foods, ..., one per logged day, one per workout) has its own
+  // last-modified time. Newer wins per section, so devices only overwrite what changed.
+  const SYNC_KEY = 'fuel-lift-sync';
+  const CORE = ['settings', 'foods', 'exercises', 'routines', 'weights', 'activeWorkout'];
+  const cloud = { adapter: null, user: null, status: 'off', error: '', busy: false, unsub: [], dirty: new Set(), pushTimer: null, retryTimer: null, pendingRender: false };
+  const sync = (() => { try { const v = JSON.parse(localStorage.getItem(SYNC_KEY)); return v && typeof v === 'object' ? v : {}; } catch { return {}; } })();
+  if (!sync.mtimes) sync.mtimes = {};
+  const snap = {}, wkMonths = {};
+  const saveSync = () => localStorage.setItem(SYNC_KEY, JSON.stringify({ mtimes: sync.mtimes, uid: sync.uid || null, migrated: !!sync.migrated }));
+  const clean = (v) => (v === undefined ? null : JSON.parse(JSON.stringify(v)));
+  function sectionValues() {
+    const out = {};
+    for (const k of CORE) out['core:' + k] = state[k] ?? null;
+    for (const d of Object.keys(state.logs)) out['log:' + d] = state.logs[d];
+    for (const w of state.workouts) out['wk:' + w.id] = w;
+    return out;
+  }
+  function syncInitSnapshot() {
+    const vals = sectionValues(); const d = defaultState(); const now = Date.now();
+    const defaults = { 'core:settings': d.settings, 'core:foods': d.foods, 'core:exercises': d.exercises, 'core:routines': d.routines, 'core:weights': d.weights, 'core:activeWorkout': null };
+    for (const k of Object.keys(vals)) {
+      snap[k] = JSON.stringify(vals[k]);
+      if (k.startsWith('wk:')) wkMonths[k.slice(3)] = String(vals[k].date || '').slice(0, 7);
+      if (!sync.migrated && sync.mtimes[k] == null) {
+        const dv = k in defaults ? JSON.stringify(k === 'core:settings' ? { ...defaults[k], lang: vals[k] && vals[k].lang } : defaults[k]) : undefined;
+        if (snap[k] !== dv) sync.mtimes[k] = now;
+      }
+    }
+    sync.migrated = true; saveSync();
+  }
+  function syncDetectChanges() {
+    const vals = sectionValues(); const now = Date.now(); let changed = false;
+    for (const k of Object.keys(vals)) {
+      const ser = JSON.stringify(vals[k]);
+      if (snap[k] !== ser) { snap[k] = ser; sync.mtimes[k] = now; cloud.dirty.add(k); changed = true; if (k.startsWith('wk:')) wkMonths[k.slice(3)] = String(vals[k].date || '').slice(0, 7); }
+    }
+    for (const k of Object.keys(snap)) if (!(k in vals)) { delete snap[k]; sync.mtimes[k] = now; cloud.dirty.add(k); changed = true; }
+    if (changed) { saveSync(); schedulePush(); }
+  }
+  const setStatus = (st, err = '') => { cloud.status = st; cloud.error = err; if (ui.tab === 'settings' && !document.activeElement?.matches('input, select')) render(); };
+  function schedulePush(delay = 700) { if (!cloud.user || !cloud.adapter) return; clearTimeout(cloud.pushTimer); cloud.pushTimer = setTimeout(pushDirty, delay); }
+  async function pushDirty() {
+    if (!cloud.user || !cloud.adapter || !cloud.dirty.size) { if (cloud.user && cloud.status === 'syncing') setStatus(navigator.onLine ? 'synced' : 'offline'); return; }
+    const keys = [...cloud.dirty]; cloud.dirty.clear();
+    const vals = sectionValues(); const uid = cloud.user.uid; const groups = {};
+    const add = (path, field, sub, value, ts) => {
+      const pk = path.join('/'); const g = groups[pk] = groups[pk] || { path, data: { mtimes: {} }, fields: [] };
+      if (sub) { g.data[field] = g.data[field] || {}; g.data[field][sub] = value; g.fields.push([field, sub]); g.data.mtimes[sub] = ts; g.fields.push(['mtimes', sub]); }
+      else { g.data[field] = value; g.fields.push([field]); g.data.mtimes[field] = ts; g.fields.push(['mtimes', field]); }
+    };
+    for (const k of keys) {
+      const ts = sync.mtimes[k] || Date.now();
+      if (k.startsWith('core:')) add(['users', uid], k.slice(5), null, clean(vals[k]), ts);
+      else if (k.startsWith('log:')) { const d = k.slice(4); add(['users', uid, 'logs', d.slice(0, 7)], 'days', d, clean(vals[k] || {}), ts); }
+      else if (k.startsWith('wk:')) { const id = k.slice(3); const w = vals[k] || null; const month = w ? String(w.date).slice(0, 7) : wkMonths[id]; if (!month) continue; add(['users', uid, 'workouts', month], 'items', id, clean(w), ts); }
+    }
+    setStatus('syncing');
+    try {
+      for (const g of Object.values(groups)) await cloud.adapter.setFields(g.path, g.data, g.fields);
+      if (cloud.dirty.size) schedulePush(); else setStatus(navigator.onLine ? 'synced' : 'offline');
+    } catch (e) {
+      for (const k of keys) cloud.dirty.add(k);
+      setStatus('error', describeErr(e));
+      clearTimeout(cloud.retryTimer); cloud.retryTimer = setTimeout(() => schedulePush(0), 15000);
+    }
+  }
+  function startListeners(uid) {
+    stopListeners();
+    cloud.unsub.push(cloud.adapter.listenDoc(['users', uid], (data) => applyRemoteCore(data)));
+    cloud.unsub.push(cloud.adapter.listenCollection(['users', uid, 'logs'], (docs) => { for (const { data } of docs) applyRemoteLogs(data); }));
+    cloud.unsub.push(cloud.adapter.listenCollection(['users', uid, 'workouts'], (docs) => { for (const { id, data } of docs) applyRemoteWorkouts(id, data); }));
+  }
+  function stopListeners() { for (const u of cloud.unsub) { try { u(); } catch {} } cloud.unsub = []; }
+  function applyRemoteCore(data) {
+    if (!data) return; const mt = data.mtimes || {}; let changed = false;
+    for (const f of CORE) {
+      const k = 'core:' + f;
+      if (mt[f] != null && mt[f] > (sync.mtimes[k] || 0) && f in data) { state[f] = data[f] ?? (f === 'activeWorkout' ? null : state[f]); sync.mtimes[k] = mt[f]; snap[k] = JSON.stringify(state[f] ?? null); changed = true; }
+    }
+    if (changed) afterRemote();
+  }
+  function applyRemoteLogs(data) {
+    if (!data) return; const mt = data.mtimes || {}; let changed = false;
+    for (const d of Object.keys(mt)) {
+      const k = 'log:' + d;
+      if (mt[d] > (sync.mtimes[k] || 0)) { state.logs[d] = (data.days && data.days[d]) || {}; sync.mtimes[k] = mt[d]; snap[k] = JSON.stringify(state.logs[d]); changed = true; }
+    }
+    if (changed) afterRemote();
+  }
+  function applyRemoteWorkouts(month, data) {
+    if (!data) return; const mt = data.mtimes || {}; let changed = false;
+    for (const id of Object.keys(mt)) {
+      const k = 'wk:' + id;
+      if (mt[id] > (sync.mtimes[k] || 0)) {
+        const w = data.items ? data.items[id] : null;
+        state.workouts = state.workouts.filter((x) => x.id !== id);
+        if (w) { state.workouts.push(w); snap[k] = JSON.stringify(w); wkMonths[id] = month; } else delete snap[k];
+        sync.mtimes[k] = mt[id]; changed = true;
+      }
+    }
+    if (changed) afterRemote();
+  }
+  function afterRemote() {
+    localStorage.setItem(KEY, JSON.stringify(state)); saveSync();
+    if (document.activeElement && document.activeElement.matches('input, select, textarea')) cloud.pendingRender = true; else render();
+  }
+  document.addEventListener('focusout', () => { if (cloud.pendingRender) { cloud.pendingRender = false; setTimeout(() => { if (!document.activeElement?.matches('input, select, textarea')) render(); else cloud.pendingRender = true; }, 50); } });
+  window.addEventListener('online', () => { if (cloud.user) { setStatus('syncing'); schedulePush(0); } });
+  window.addEventListener('offline', () => { if (cloud.user) setStatus('offline'); });
+
+  async function initCloud() {
+    const cfg = window.FUEL_LIFT_FIREBASE; const fake = window.__FUEL_LIFT_CLOUD;
+    if (!cfg && !fake) { cloud.status = 'off'; return; }
+    cloud.status = 'loading'; if (ui.tab === 'settings') render();
+    try { cloud.adapter = fake || await firebaseAdapter(cfg); } catch (e) { setStatus('error', t('Could not load the sync module')); return; }
+    cloud.status = 'signedout';
+    cloud.adapter.onAuth((user) => onAuthChange(user));
+    if (ui.tab === 'settings') render();
+  }
+  async function onAuthChange(user) {
+    cloud.user = user;
+    if (!user) { stopListeners(); clearTimeout(cloud.pushTimer); setStatus('signedout'); return; }
+    setStatus('syncing');
+    if (sync.uid !== user.uid) await firstSignIn(user.uid);
+    else { startListeners(user.uid); schedulePush(0); }
+  }
+  async function firstSignIn(uid) {
+    const hasLocal = Object.values(sync.mtimes).some((v) => v > 0);
+    let remote = null;
+    try { remote = await cloud.adapter.getDoc(['users', uid]); } catch (e) { setStatus('error', describeErr(e)); return; }
+    if (hasLocal && remote) { ui.modal = { type: 'syncChoice', uid }; renderModal(); return; }
+    finishFirstSignIn(uid, hasLocal && !remote ? 'device' : 'cloud');
+  }
+  function finishFirstSignIn(uid, choice) {
+    if (choice === 'device') { const now = Date.now(); for (const k of Object.keys(sectionValues())) { sync.mtimes[k] = now; cloud.dirty.add(k); } }
+    else { const keepLang = state.settings.lang; state = defaultState(); state.settings.lang = keepLang; sync.mtimes = {}; for (const k of Object.keys(snap)) delete snap[k]; cloud.dirty.clear(); syncInitSnapshot(); localStorage.setItem(KEY, JSON.stringify(state)); render(); }
+    sync.uid = uid; saveSync();
+    startListeners(uid); schedulePush(0);
+  }
+  function describeErr(e) {
+    const code = String((e && e.code) || '');
+    if (/invalid-credential|wrong-password|user-not-found|invalid-login/.test(code)) return t('Wrong email or password');
+    if (/email-already-in-use/.test(code)) return t('That email is already registered');
+    if (/invalid-email/.test(code)) return t('That email looks invalid');
+    if (/weak-password/.test(code)) return t('Password must be at least 6 characters');
+    if (/too-many-requests/.test(code)) return t('Too many attempts, try again later');
+    if (/network-request-failed|unavailable/.test(code)) return t('Network error, check your connection');
+    if (/permission-denied/.test(code)) return t('Permission denied (check the Firestore rules)');
+    return (e && e.message) || String(e);
+  }
+  async function authAction(kind) {
+    const a = ui.auth; const email = a.email.trim(), pw = a.password;
+    if (!email || !pw) return toast(t('Enter your email and password'));
+    if (kind === 'signUp' && pw.length < 6) return toast(t('Password must be at least 6 characters'));
+    cloud.busy = true; render();
+    try { await cloud.adapter[kind](email, pw); a.password = ''; toast(kind === 'signUp' ? t('Account created') : t('Welcome back!')); }
+    catch (e) { toast(describeErr(e)); }
+    finally { cloud.busy = false; if (ui.tab === 'settings') render(); }
+  }
+  async function firebaseAdapter(cfg) {
+    const base = 'https://www.gstatic.com/firebasejs/10.14.1/';
+    const [appM, authM, fsM] = await Promise.all([import(base + 'firebase-app.js'), import(base + 'firebase-auth.js'), import(base + 'firebase-firestore.js')]);
+    const app = appM.initializeApp(cfg);
+    const auth = authM.getAuth(app);
+    let db; try { db = fsM.initializeFirestore(app, { localCache: fsM.persistentLocalCache({ tabManager: fsM.persistentMultipleTabManager() }) }); } catch { db = fsM.getFirestore(app); }
+    const ref = (path) => (path.length % 2 === 0 ? fsM.doc(db, ...path) : fsM.collection(db, ...path));
+    const onErr = (e) => setStatus('error', describeErr(e));
+    return {
+      onAuth: (cb) => authM.onAuthStateChanged(auth, (u) => cb(u ? { uid: u.uid, email: u.email } : null)),
+      signIn: (e, p) => authM.signInWithEmailAndPassword(auth, e, p),
+      signUp: (e, p) => authM.createUserWithEmailAndPassword(auth, e, p),
+      signOut: () => authM.signOut(auth),
+      resetPassword: (e) => authM.sendPasswordResetEmail(auth, e),
+      getDoc: async (path) => { const sn = await fsM.getDoc(ref(path)); return sn.exists() ? sn.data() : null; },
+      setFields: (path, data, fields) => fsM.setDoc(ref(path), data, { mergeFields: fields.map((f) => new fsM.FieldPath(...f)) }),
+      listenDoc: (path, cb) => fsM.onSnapshot(ref(path), (sn) => cb(sn.exists() ? sn.data() : null), onErr),
+      listenCollection: (path, cb) => fsM.onSnapshot(ref(path), (qs) => cb(qs.docs.map((d) => ({ id: d.id, data: d.data() }))), onErr),
+    };
+  }
+  function accountCard() {
+    const a = ui.auth || (ui.auth = { email: '', password: '' });
+    const st = cloud.status; let body;
+    const statusLine = () => {
+      if (st === 'error') return `<span class="dot err"></span>${esc(t('Sync error: {msg}', { msg: cloud.error }))}`;
+      if (st === 'offline') return `<span class="dot warn"></span>${t('Offline. Changes will sync when you are back online.')}`;
+      if (st === 'syncing') return `<span class="dot warn"></span>${t('Syncing…')}`;
+      return `<span class="dot ok"></span>${t('Synced')}`;
+    };
+    if (st === 'off') body = `<p class="small muted">${t('Cloud sync is not set up for this copy of the app. See the README to connect a Firebase project.')}</p>`;
+    else if (st === 'loading') body = `<p class="small muted">${t('Loading…')}</p>`;
+    else if (!cloud.user) body = `<div class="stack">
+        <div class="grid-2">
+          <div class="field"><label>${t('Email')}</label><input class="input" type="email" autocomplete="email" inputmode="email" data-field="auth-email" value="${esc(a.email)}" /></div>
+          <div class="field"><label>${t('Password')}</label><input class="input" type="password" autocomplete="current-password" id="auth-password" data-field="auth-password" value="${esc(a.password)}" /></div>
+        </div>
+        ${st === 'error' ? `<p class="small" style="color:var(--danger)">${esc(cloud.error)}</p>` : ''}
+        <div class="row wrap"><button class="btn primary sm" data-action="auth-signin" ${cloud.busy ? 'disabled' : ''}>${t('Sign in')}</button><button class="btn sm" data-action="auth-signup" ${cloud.busy ? 'disabled' : ''}>${t('Create account')}</button><span class="spacer"></span><button class="btn ghost sm" data-action="auth-reset">${t('Forgot password?')}</button></div>
+      </div>`;
+    else body = `<div class="row between wrap"><div><div style="font-weight:500">${t('Signed in as {email}', { email: esc(cloud.user.email || '') })}</div><div class="small ${st === 'error' ? '' : 'muted'}" style="${st === 'error' ? 'color:var(--danger)' : ''}">${statusLine()}</div></div><button class="btn sm" data-action="auth-signout">${t('Sign out')}</button></div>`;
+    return `<div class="card"><h2 style="margin-bottom:6px">${t('Account')}</h2><p class="small muted" style="margin-bottom:12px">${t('Your log, foods, routines and workouts follow you on every device where you sign in.')}</p>${body}</div>`;
+  }
+  const modalSyncChoice = () => `<div class="modal-head"><h2>${t('Which data should we keep?')}</h2></div><p style="color:var(--text-2)">${t('This device already has data, and your account also has data in the cloud. Pick one; the other copy is replaced.')}</p><div class="modal-foot" style="flex-direction:column"><button class="btn primary" data-action="sync-cloud">${t('Use cloud data')}</button><button class="btn" data-action="sync-device">${t('Use this device’s data')}</button></div>`;
+
   /* =========================== SETTINGS =========================== */
   function viewSettings() {
     const s = state.settings, g = s.goals, p = s.profile;
@@ -852,6 +1072,7 @@
         <div class="setting-row"><div><div class="lbl">${t('Rest timer')}</div><div class="desc">${t('Starts when you check a set. 0 to disable.')}</div></div><div class="input-suffix"><input class="input" type="number" inputmode="numeric" data-field="rest-seconds" value="${s.restSeconds}" /><span>${t('sec')}</span></div></div>
         <div class="setting-row"><div><div class="lbl">${t('Theme')}</div></div><div class="seg">${[['system', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => `<button class="${s.theme === v ? 'active' : ''}" data-action="set-theme" data-v="${v}">${t(l)}</button>`).join('')}</div></div>
       </div>
+      ${accountCard()}
       <div class="card">
         <h2 style="margin-bottom:6px">${t('Data')}</h2>
         <p class="small muted" style="margin-bottom:12px">${t('Everything lives in this browser. Export regularly to keep a backup or move devices.')}</p>
@@ -874,7 +1095,7 @@
   function renderModal() {
     const root = $('#modal-root'), box = $('#modal');
     if (!ui.modal) { stopScanner(); root.hidden = true; box.innerHTML = ''; return; }
-    const views = { addFood: modalAddFood, foodForm: modalFoodForm, routine: modalRoutine, exPicker: modalExPicker, confirm: modalConfirm, scan: modalScan };
+    const views = { addFood: modalAddFood, foodForm: modalFoodForm, routine: modalRoutine, exPicker: modalExPicker, confirm: modalConfirm, scan: modalScan, syncChoice: modalSyncChoice };
     if (ui.modal.type !== 'scan') stopScanner();
     box.innerHTML = views[ui.modal.type]();
     root.hidden = false;
@@ -893,7 +1114,7 @@
       tab() { ui.tab = d.tab; history.replaceState(null, '', '#' + d.tab); window.scrollTo(0, 0); render(); },
       date() { ui.date = addDays(ui.date, Number(d.n)); render(); },
       'date-today'() { ui.date = dateKey(); render(); },
-      'modal-close'() { closeModal(); },
+      'modal-close'() { if (m?.type === 'syncChoice') return; closeModal(); },
       // food
       'add-food'() { openAddFood(d.meal); },
       'pick-food'() { m.foodId = d.id || null; m.grams = null; renderModal(); },
@@ -939,7 +1160,13 @@
       'set-theme'() { state.settings.theme = d.v; save(); applyTheme(); render(); },
       'set-lang'() { state.settings.lang = d.v; save(); render(); },
       export() { const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }); const a2 = document.createElement('a'); a2.href = URL.createObjectURL(blob); a2.download = `fuel-lift-${dateKey()}.json`; a2.click(); setTimeout(() => URL.revokeObjectURL(a2.href), 1000); },
-      reset() { confirm(t('Reset all data?'), t('Foods, logs, routines and workouts will be erased. Export first if you want a backup.'), () => { const keepLang = state.settings.lang; localStorage.removeItem(KEY); state = defaultState(); state.settings.lang = keepLang; closeModal(); applyTheme(); render(); toast(t('Data reset')); }, t('Reset')); },
+      reset() { confirm(t('Reset all data?'), t('Foods, logs, routines and workouts will be erased. Export first if you want a backup.') + (cloud.user ? ' ' + t('This device only. Your cloud data is kept; sign in again to get it back.') : ''), () => { const keepLang = state.settings.lang; if (cloud.user) { stopListeners(); clearTimeout(cloud.pushTimer); cloud.dirty.clear(); cloud.adapter.signOut().catch(() => {}); cloud.user = null; cloud.status = 'signedout'; } localStorage.removeItem(KEY); state = defaultState(); state.settings.lang = keepLang; sync.mtimes = {}; sync.uid = null; for (const k of Object.keys(snap)) delete snap[k]; syncInitSnapshot(); closeModal(); applyTheme(); render(); toast(t('Data reset')); }, t('Reset')); },
+      'auth-signin'() { authAction('signIn'); },
+      'auth-signup'() { authAction('signUp'); },
+      'auth-reset'() { const email = ui.auth.email.trim(); if (!email) return toast(t('Enter your email first')); cloud.adapter.resetPassword(email).then(() => toast(t('Password reset email sent'))).catch((e) => toast(describeErr(e))); },
+      'auth-signout'() { cloud.adapter.signOut().then(() => toast(t('Signed out'))).catch((e) => toast(describeErr(e))); },
+      'sync-cloud'() { const uid = m.uid; closeModal(); finishFirstSignIn(uid, 'cloud'); },
+      'sync-device'() { const uid = m.uid; closeModal(); finishFirstSignIn(uid, 'device'); },
       'confirm-yes'() { const fn = m.onYes; fn(); },
       'confirm-no'() { ui.modal = m.prev || null; renderModal(); },
     };
@@ -978,6 +1205,8 @@
       case 'pf-weight': { const kg = fromDisplayW(v); if (kg) state.settings.profile.weight = kg; save(); break; }
       case 'pf-activity': state.settings.profile.activity = num(v); save(); render(); break;
       case 'pf-goal': state.settings.profile.goal = v; save(); render(); break;
+      case 'auth-email': ui.auth.email = v; break;
+      case 'auth-password': ui.auth.password = v; break;
     }
   });
   // Re-render settings estimate after typing in profile numeric fields (on blur, to keep focus while typing).
@@ -994,7 +1223,8 @@
     }
   });
   document.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape' && ui.modal) closeModal();
+    if (ev.key === 'Escape' && ui.modal && ui.modal.type !== 'syncChoice') closeModal();
+    if (ev.key === 'Enter' && ev.target.id === 'auth-password') $('[data-action=auth-signin]').click();
     if (ev.key === 'Enter' && ui.modal?.type === 'addFood' && ui.modal.foodId && ev.target.id === 'food-grams') $('[data-action=confirm-food]').click();
     if (ev.key === 'Enter' && ev.target.id === 'weight-input') $('[data-action=log-weight]').click();
     if (ev.key === 'Enter' && ev.target.id === 'scan-manual') { ev.preventDefault(); $('[data-action=scan-manual]').click(); }
@@ -1005,7 +1235,9 @@
   const hashTab = location.hash.replace('#', '');
   if (TABS.some(([id]) => id === hashTab)) ui.tab = hashTab;
   else if (state.activeWorkout) ui.tab = 'gym';
+  syncInitSnapshot();
   applyTheme();
   render();
+  initCloud();
   window.addEventListener('hashchange', () => { const tb = location.hash.replace('#', ''); if (TABS.some(([id]) => id === tb) && tb !== ui.tab) { ui.tab = tb; render(); } });
 })();

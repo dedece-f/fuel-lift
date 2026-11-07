@@ -20,7 +20,8 @@ Note: browsers only allow camera access on `localhost` or HTTPS. To scan with yo
 - **Barcode scanner**: tap the scan icon in the food search (or Scan on the Foods tab), point the camera at a product, and the nutrition facts are fetched from Open Food Facts (good coverage of Chilean products). You can also type the number under the barcode. Unknown products open an empty form so you can copy the label; the barcode is saved with the food, so next time it is found instantly.
 - **Gym**: routines (Push / Pull / Legs included), workout logger with previous-session hints, rest timer, history with volume and "repeat" button.
 - **Progress**: body weight trend, calories vs goal for the last 14 days, 7-day stats, personal bests.
-- **Settings**: goals (manual or calculated from your profile with Mifflin-St Jeor), kg/lb, rest timer length, theme, JSON export/import.
+- **Settings**: goals (manual or calculated from your profile with Mifflin-St Jeor), kg/lb, rest timer length, theme, language, JSON export/import.
+- **Account + cloud sync** (optional): sign in with email and password and your data follows you across devices. Works offline; changes sync when you are back online. See "Cloud sync" below to turn it on.
 
 ## Hosting it for friends
 
@@ -31,8 +32,42 @@ It is three static files, so any static host works. Each person's data stays in 
 
 HTTPS matters because browsers only allow the camera (barcode scanner) on HTTPS or localhost.
 
+## Cloud sync (accounts across devices)
+
+Sync is powered by Firebase (free tier is plenty for a group of friends). One-time setup, about 10 minutes:
+
+1. Go to https://console.firebase.google.com, create a project (Analytics not needed).
+2. **Build > Authentication > Get started > Sign-in method**: enable **Email/Password**.
+3. **Build > Firestore Database > Create database**: pick a region close to you (e.g. `southamerica-east1`), start in **production mode**.
+4. In Firestore, open the **Rules** tab and replace the rules with:
+
+       rules_version = '2';
+       service cloud.firestore {
+         match /databases/{database}/documents {
+           match /users/{uid}/{document=**} {
+             allow read, write: if request.auth != null && request.auth.uid == uid;
+           }
+         }
+       }
+
+   Publish. This means each person can only read and write their own data.
+5. **Project settings (gear icon) > Your apps > Add app > Web** (`</>`). Give it a name, skip hosting, then copy the `firebaseConfig` object.
+6. Paste it into `firebase-config.js` in this folder, replacing `null`:
+
+       window.FUEL_LIFT_FIREBASE = { apiKey: "...", authDomain: "...", projectId: "...", storageBucket: "...", messagingSenderId: "...", appId: "..." };
+
+7. If the app is hosted on GitHub Pages, also go to **Authentication > Settings > Authorized domains** and add `<user>.github.io`.
+8. Commit and push. Settings now shows an **Account** card where everyone can create their own login.
+
+Notes:
+- The config values are meant to be public; the security rules are what protect the data.
+- Password resets use Firebase's built-in email, nothing else to configure.
+- Each piece of data (settings, food library, each day's log, each workout) syncs separately with its own timestamp, so two devices only overwrite what actually changed.
+- The first time you sign in on a device that already has local data while the account already has cloud data, the app asks which copy to keep.
+
 ## Files
 
 - `index.html` - shell
 - `styles.css` - design tokens (light/dark), layout, components
-- `app.js` - state, views, charts, event handling
+- `app.js` - state, views, charts, event handling, barcode scanner, cloud sync
+- `firebase-config.js` - optional Firebase config for cloud sync (null = local only)
