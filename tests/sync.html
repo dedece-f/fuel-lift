@@ -1,0 +1,124 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#000"><link rel="stylesheet" href="/styles.css"></head>
+<body>
+<div class="app"><aside class="sidebar"><div class="brand"><span class="brand-mark"></span><span>Fuel</span></div><nav class="nav" id="nav-side"></nav><div class="sidebar-foot muted" id="sidebar-foot"></div></aside>
+<main class="main" id="main"></main><nav class="tabbar" id="nav-bottom"></nav></div>
+<div class="modal-root" id="modal-root" hidden><div class="modal-backdrop" data-action="modal-close"></div><div class="modal" id="modal"></div></div>
+<div class="rest-pill" id="rest-pill" hidden></div><div class="toast" id="toast" hidden></div>
+<pre id="test-out" style="position:fixed;top:0;left:0;z-index:999;background:#fff;color:#000;font-size:11px;max-height:45vh;overflow:auto"></pre>
+<script>
+window.__FUEL_LIFT_TEST=true; window.__errors=[]; window.onerror=(m,s,l,c)=>{window.__errors.push(m+' @'+l+':'+c)};
+(function(){const pad=n=>String(n).padStart(2,'0');const key=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const logs={},weights=[];for(let i=1;i<=12;i++){const d=new Date();d.setDate(d.getDate()-i);const k=key(d);
+logs[k]={breakfast:[{id:'s'+i,foodId:'f_oats_dry',name:'Oats, dry',grams:80,kcal:311,p:13.6,c:52.8,f:5.6}],lunch:[],dinner:[],snacks:[]};
+if(i%2===0)weights.push({date:k,kg:78.5-i*0.08});}
+const t=new Date();t.setDate(t.getDate()-3);
+const workouts=[{id:'w1',routineId:'r_push',name:'Push',date:key(t),startedAt:t.getTime(),endedAt:t.getTime()+3600e3,exercises:[{exId:'e_bench_press',name:'Bench Press',muscle:'Chest',target:'8-10',sets:[{weight:60,reps:10,done:true}]}]}];
+localStorage.removeItem('fuel-lift-sync');
+localStorage.setItem('fuel-lift-v1',JSON.stringify({version:1,settings:{lang:'en',theme:'light',units:'kg',restSeconds:90,goals:{kcal:2200,p:150,c:240,f:70},profile:{sex:'male',age:28,height:178,weight:78,activity:1.55,goal:'maintain'}},logs,weights,workouts,activeWorkout:null}));
+window.__today=key(new Date()); window.__month=window.__today.slice(0,7); window.__wkMonth=key(t).slice(0,7);})();
+// in-memory stand-in for the Firebase adapter (same interface as firebaseAdapter() in app.js)
+(function(){
+const store={}, docL={}, colL={}; let authCb=null, user=null;
+const key=p=>p.join('/'); const clone=v=>v===undefined?undefined:JSON.parse(JSON.stringify(v));
+const setPath=(o,segs,val)=>{for(let i=0;i<segs.length-1;i++){if(!o[segs[i]]||typeof o[segs[i]]!=='object')o[segs[i]]={};o=o[segs[i]];}o[segs[segs.length-1]]=val;};
+const getPath=(o,segs)=>segs.reduce((a,s)=>a==null?undefined:a[s],o);
+const colDocs=ck=>Object.keys(store).filter(k=>k.startsWith(ck+'/')&&!k.slice(ck.length+1).includes('/')).map(k=>({id:k.slice(ck.length+1),data:clone(store[k])}));
+const notify=p=>{const k=key(p);(docL[k]||[]).forEach(cb=>cb(clone(store[k])??null));const ck=key(p.slice(0,-1));(colL[ck]||[]).forEach(cb=>cb(colDocs(ck)));};
+const fake={store,calls:[],
+ onAuth(cb){authCb=cb;setTimeout(()=>cb(user),0);},
+ async signIn(e,p){if(p!=='secret'){const err=new Error('bad');err.code='auth/invalid-credential';throw err;}user={uid:'u_'+e.split('@')[0],email:e};authCb(user);},
+ async signUp(e,p){user={uid:'u_'+e.split('@')[0],email:e};authCb(user);},
+ async signOut(){user=null;authCb(null);},
+ async resetPassword(){},
+ async getDoc(p){return clone(store[key(p)])??null;},
+ async setFields(p,data,fields){fake.calls.push({p:key(p),fields:fields.map(f=>f.join('.'))});const k=key(p);store[k]=store[k]||{};for(const f of fields)setPath(store[k],f,clone(getPath(data,f)));notify(p);},
+ listenDoc(p,cb){const k=key(p);(docL[k]=docL[k]||[]).push(cb);setTimeout(()=>cb(clone(store[k])??null),0);return()=>{docL[k]=docL[k].filter(x=>x!==cb);};},
+ listenCollection(p,cb){const k=key(p);(colL[k]=colL[k]||[]).push(cb);setTimeout(()=>cb(colDocs(k)),0);return()=>{colL[k]=colL[k].filter(x=>x!==cb);};},
+ remote(p,data,fields){return fake.setFields(p,data,fields);},
+};
+window.__FUEL_LIFT_CLOUD=fake;})();
+if(location.hash==='#shot')document.getElementById('test-out').style.display='none';
+</script>
+<script src="/app.js"></script>
+<script>
+const out=[];const ok=(c,m)=>out.push((c?'PASS ':'FAIL ')+m);
+const q=s=>document.querySelector(s), qa=s=>document.querySelectorAll(s);
+const click=s=>{const e=q(s); if(!e){out.push('FAIL missing '+s);return;} e.click();};
+const inp=(s,v)=>{const e=q(s); if(!e){out.push('FAIL missing input '+s);return;} e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));};
+const until=(fn,ms=6000)=>new Promise((res)=>{const t0=Date.now();const i=setInterval(()=>{if(fn()||Date.now()-t0>ms){clearInterval(i);res(fn());}},50);});
+const F=window.__FUEL_LIFT_CLOUD, S=F.store, uid='u_david', M=window.__month, WM=window.__wkMonth, TODAY=window.__today;
+const local=()=>JSON.parse(localStorage.getItem('fuel-lift-v1'));
+const foodsDoc=(u)=>S['users/'+u+'/foods/all'];
+const cloudFoods=(u)=>Object.values((foodsDoc(u)||{}).items||{}).filter(Boolean);
+(async()=>{try{
+click('[data-action=tab][data-tab=settings]');
+await until(()=>q('[data-action=auth-signin]')); ok(q('[data-action=auth-signin]'),'sign-in form shown');
+inp('[data-field=auth-email]','david@x.cl'); inp('[data-field=auth-password]','nope'); click('[data-action=auth-signin]');
+await until(()=>/Wrong email/.test(q('#toast').textContent)); ok(/Wrong email or password/.test(q('#toast').textContent),'wrong password message');
+inp('[data-field=auth-password]','secret'); click('[data-action=auth-signin]');
+await until(()=>foodsDoc(uid)&&cloudFoods(uid).length>=57);
+ok(cloudFoods(uid).length===57,'device data pushed: 57 foods as per-food items ('+cloudFoods(uid).length+')');
+ok(S['users/'+uid].settings&&S['users/'+uid].settings.goals.kcal===2200,'settings pushed');
+ok(!('foods' in S['users/'+uid]),'foods no longer stored as one block in the core doc');
+ok(S['users/'+uid].mtimes&&S['users/'+uid].mtimes.settings>0,'mtimes pushed');
+ok(S['users/'+uid].weights&&S['users/'+uid].weights.length===6,'weights pushed');
+const logDocs=Object.keys(S).filter(k=>k.startsWith('users/'+uid+'/logs/')); ok(logDocs.length>=1,'log month docs: '+logDocs.join(','));
+const days=logDocs.reduce((a,k)=>a+Object.keys(S[k].days||{}).length,0); ok(days===12,'12 days pushed ('+days+')');
+ok(S['users/'+uid+'/workouts/'+WM]&&S['users/'+uid+'/workouts/'+WM].items.w1,'workout pushed');
+await until(()=>/Synced/.test(q('#main').textContent)); ok(/Signed in as david@x.cl/.test(q('#main').textContent)&&/Synced/.test(q('#main').textContent),'status shows signed in + synced');
+ok(JSON.parse(localStorage.getItem('fuel-lift-sync')).everSignedIn===true,'everSignedIn flag stored for eager SDK load next time');
+// remote change to settings
+const fut=Date.now()+5000; const st=JSON.parse(JSON.stringify(S['users/'+uid].settings)); st.goals.kcal=1800;
+await F.remote(['users',uid],{settings:st,mtimes:{settings:fut}},[['settings'],['mtimes','settings']]);
+await until(()=>q('[data-field=goal-kcal]')&&q('[data-field=goal-kcal]').value==='1800'); ok(q('[data-field=goal-kcal]').value==='1800','remote settings applied + re-rendered');
+ok(local().settings.goals.kcal===1800,'remote change persisted locally');
+// remote adds a food and deletes a built-in one
+await F.remote(['users',uid,'foods','all'],{items:{fx:{id:'fx',name:'Remote food',kcal:50,p:1,c:2,f:3,builtin:false},f_beer:null},mtimes:{fx:fut,f_beer:fut}},[['items','fx'],['mtimes','fx'],['items','f_beer'],['mtimes','f_beer']]);
+await until(()=>local().foods.some(f=>f.id==='fx')&&!local().foods.some(f=>f.id==='f_beer')); ok(local().foods.some(f=>f.id==='fx'),'remote food added locally'); ok(!local().foods.some(f=>f.id==='f_beer'),'remote food deletion applied locally');
+// remote adds today's log
+await F.remote(['users',uid,'logs',M],{days:{[TODAY]:{breakfast:[{id:'r1',foodId:'f_banana',name:'Banana',grams:118,kcal:105,p:1.3,c:27,f:0.4}],lunch:[],dinner:[],snacks:[]}},mtimes:{[TODAY]:fut}},[['days',TODAY],['mtimes',TODAY]]);
+click('[data-action=tab][data-tab=today]'); await until(()=>q('.ring .num')&&q('.ring .num').textContent==='105'); ok(q('.ring .num').textContent==='105','remote day log applied ('+q('.ring .num').textContent+')');
+// remote deletes workout
+await F.remote(['users',uid,'workouts',WM],{items:{w1:null},mtimes:{w1:fut}},[['items','w1'],['mtimes','w1']]);
+click('[data-action=tab][data-tab=gym]'); await until(()=>qa('details.hist').length===0); ok(qa('details.hist').length===0,'remote workout deletion applied');
+// local change pushes: new food -> only that food item is written
+F.calls.length=0; click('[data-action=tab][data-tab=foods]'); click('[data-action=new-food]'); inp('[data-field=ff-name]','Oat milk'); inp('[data-field=ff-kcal]','46'); click('[data-action=ff-save]');
+await until(()=>cloudFoods(uid).some(f=>f.name==='Oat milk')); ok(cloudFoods(uid).some(f=>f.name==='Oat milk'),'local new food pushed');
+ok(F.calls.length===1&&F.calls[0].p==='users/'+uid+'/foods/all'&&F.calls[0].fields.length===2,'only the new food item written ('+F.calls.map(c=>c.p+':'+c.fields.join('|')).join(' ; ')+')');
+// local workout pushes
+click('[data-action=tab][data-tab=gym]'); click('[data-action=start-routine][data-id=r_legs]'); inp('[data-field=set-weight][data-ei="0"][data-si="0"]','100'); inp('[data-field=set-reps][data-ei="0"][data-si="0"]','5'); click('[data-action=toggle-set][data-ei="0"][data-si="0"]'); click('[data-action=rest-skip]'); click('[data-action=finish-workout]');
+await until(()=>S['users/'+uid+'/workouts/'+M]&&Object.values(S['users/'+uid+'/workouts/'+M].items||{}).some(w=>w&&w.name==='Legs')); ok(Object.values(S['users/'+uid+'/workouts/'+M].items).some(w=>w&&w.name==='Legs'),'finished workout pushed');
+ok(S['users/'+uid].activeWorkout===null,'activeWorkout cleared in cloud');
+// local day log pushes
+click('[data-action=tab][data-tab=today]'); click('[data-action=add-food][data-meal=lunch]'); inp('#food-search','apple'); click('#food-results .food-result'); click('[data-action=confirm-food]');
+await until(()=>S['users/'+uid+'/logs/'+M].days[TODAY].lunch.length===1); ok(S['users/'+uid+'/logs/'+M].days[TODAY].lunch.length===1,'local lunch entry pushed to day doc');
+// saved meals sync as a core section
+click('[data-action=save-meal][data-meal=lunch]'); inp('[data-field=meal-name]','Lunch A'); click('[data-action=save-meal-confirm]');
+await until(()=>S['users/'+uid].meals&&S['users/'+uid].meals.length===1); ok(S['users/'+uid].meals&&S['users/'+uid].meals.length===1,'saved meal pushed');
+// sign out keeps local data
+click('[data-action=tab][data-tab=settings]'); click('[data-action=auth-signout]'); await until(()=>q('[data-action=auth-signin]')); ok(q('[data-action=auth-signin]'),'signed out shows form again');
+ok(local().foods.length===58,'local data kept after sign out ('+local().foods.length+')');
+// second user with cloud data -> choice modal -> cloud wins
+S['users/u_ana']={settings:{lang:'en',theme:'light',units:'kg',restSeconds:60,goals:{kcal:1500,p:100,c:150,f:50},profile:{sex:'female',age:30,height:165,weight:60,activity:1.375,goal:'cut'}},mtimes:{settings:Date.now()}};
+S['users/u_ana/foods/all']={items:{fa:{id:'fa',name:'Ana food',kcal:100,p:1,c:2,f:3,builtin:false}},mtimes:{fa:Date.now()}};
+inp('[data-field=auth-email]','ana@x.cl'); inp('[data-field=auth-password]','secret'); click('[data-action=auth-signin]');
+await until(()=>q('[data-action=sync-cloud]')); ok(q('[data-action=sync-cloud]'),'choice modal shown for second user');
+document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); ok(!q('#modal-root').hidden,'choice modal cannot be dismissed');
+click('[data-action=sync-cloud]'); ok(__FL.state.foods.length===57&&__FL.cloud.unsub.length===4&&__FL.sync.uid==='u_ana','keep-cloud resets to a clean default library ('+__FL.state.foods.length+' foods)'); await until(()=>local().foods.some(f=>f.name==='Ana food'));
+ok(local().foods.some(f=>f.name==='Ana food')&&!local().foods.some(f=>f.name==='Oat milk'),'cloud data replaced device data (customs: '+local().foods.filter(f=>!f.builtin).map(f=>f.name).join(',')+'; total '+local().foods.length+')');
+await until(()=>q('[data-field=goal-kcal]')&&q('[data-field=goal-kcal]').value==='1500'); ok(q('[data-field=goal-kcal]').value==='1500','cloud settings applied');
+ok(JSON.parse(localStorage.getItem('fuel-lift-sync')).uid==='u_ana','sync uid stored');
+ok(Object.keys(local().logs).length===0,'old user logs not leaked into new user');
+// device-choice path: keeps device data and merges in cloud-only items
+click('[data-action=auth-signout]'); await until(()=>q('[data-action=auth-signin]'));
+click('[data-action=tab][data-tab=foods]'); click('[data-action=new-food]'); inp('[data-field=ff-name]','Local only'); inp('[data-field=ff-kcal]','10'); click('[data-action=ff-save]');
+S['users/u_bob']={settings:{lang:'en'},mtimes:{settings:Date.now()-100000}};
+S['users/u_bob/foods/all']={items:{fb:{id:'fb',name:'Bob food',kcal:1,p:0,c:0,f:0}},mtimes:{fb:Date.now()-100000}};
+click('[data-action=tab][data-tab=settings]'); inp('[data-field=auth-email]','bob@x.cl'); inp('[data-field=auth-password]','secret'); click('[data-action=auth-signin]');
+await until(()=>q('[data-action=sync-device]')); click('[data-action=sync-device]');
+await until(()=>cloudFoods('u_bob').some(f=>f.name==='Local only')); ok(cloudFoods('u_bob').some(f=>f.name==='Local only'),'device choice pushed device foods');
+await until(()=>local().foods.some(f=>f.name==='Bob food')); ok(local().foods.some(f=>f.name==='Local only')&&local().foods.some(f=>f.name==='Bob food'),'device choice merged cloud-only food in');
+}catch(e){out.push('EXC '+e.message+' '+(e.stack||'').split('\n')[1]);}
+out.push('ERRORS '+JSON.stringify(window.__errors)); out.push('DONE');
+document.getElementById('test-out').textContent=out.join('\n');})();
+</script></body></html>

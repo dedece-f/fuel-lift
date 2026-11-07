@@ -1,0 +1,100 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#000"><link rel="stylesheet" href="/styles.css"></head>
+<body>
+<div class="app"><aside class="sidebar"><div class="brand"><span class="brand-mark"></span><span>Fuel</span></div><nav class="nav" id="nav-side"></nav><div class="sidebar-foot muted" id="sidebar-foot"></div></aside>
+<main class="main" id="main"></main><nav class="tabbar" id="nav-bottom"></nav></div>
+<div class="modal-root" id="modal-root" hidden><div class="modal-backdrop" data-action="modal-close"></div><div class="modal" id="modal"></div></div>
+<div class="rest-pill" id="rest-pill" hidden></div><div class="toast" id="toast" hidden></div>
+<pre id="test-out" style="position:fixed;top:0;left:0;z-index:999;background:#fff;color:#000;font-size:11px;max-height:40vh;overflow:auto"></pre>
+<script>
+window.__FUEL_LIFT_TEST=true; window.__errors=[]; window.onerror=(m,s,l,c)=>{window.__errors.push(m+' @'+l+':'+c)};
+// seed: 12 days of logs, weights, one workout
+(function(){const pad=n=>String(n).padStart(2,'0');const key=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const logs={},weights=[];for(let i=1;i<=12;i++){const d=new Date();d.setDate(d.getDate()-i);const k=key(d);
+logs[k]={breakfast:[{id:'s'+i,foodId:'f_oats_dry',name:'Oats, dry',grams:80,kcal:311,p:13.6,c:52.8,f:5.6}],lunch:[{id:'l'+i,foodId:'f_chicken_breast_cooked',name:'Chicken breast, cooked',grams:200+i*20,kcal:330+i*33,p:62,c:0,f:7.2}],dinner:[{id:'d'+i,foodId:'f_white_rice_cooked',name:'White rice, cooked',grams:300,kcal:1300,p:8,c:84,f:1}],snacks:[]};
+if(i%2===0)weights.push({date:k,kg:78.5-i*0.08});}
+const t=new Date();t.setDate(t.getDate()-3);
+const workouts=[{id:'w1',routineId:'r_push',name:'Push',date:key(t),startedAt:t.getTime(),endedAt:t.getTime()+3600e3,exercises:[{exId:'e_bench_press',name:'Bench Press',muscle:'Chest',target:'8-10',sets:[{weight:60,reps:10,done:true},{weight:65,reps:8,done:true},{weight:65,reps:8,done:true}]},{exId:'e_overhead_press',name:'Overhead Press',muscle:'Shoulders',target:'8-10',sets:[{weight:40,reps:8,done:true}]}]}];
+localStorage.removeItem('fuel-lift-sync');
+localStorage.setItem('fuel-lift-v1',JSON.stringify({version:1,settings:{lang:'en',theme:'light',units:'kg',restSeconds:90,goals:{kcal:2200,p:150,c:240,f:70},profile:{sex:'male',age:28,height:178,weight:78,activity:1.55,goal:'maintain'}},logs,weights,workouts,activeWorkout:null}));})();
+</script>
+<script src="/app.js"></script>
+<script>
+const SHOT=location.hash; // captured before the app rewrites the hash while navigating tabs
+const out=[];const ok=(c,m)=>out.push((c?'PASS ':'FAIL ')+m);
+const q=s=>document.querySelector(s), qa=s=>document.querySelectorAll(s);
+const click=s=>{const e=q(s); if(!e){out.push('FAIL missing '+s);return;} e.click();};
+const inp=(s,v)=>{const e=q(s); if(!e){out.push('FAIL missing input '+s);return;} e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));};
+try{
+ok(q('.ring'),'today renders ring');
+ok(qa('.card.meal').length===4,'4 meal cards');
+click('[data-action=add-food][data-meal=lunch]'); ok(!q('#modal-root').hidden,'add food modal opens');
+inp('#food-search','chicken'); ok(/Chicken breast/.test(q('#food-results').textContent),'search finds chicken');
+click('#food-results .food-result'); ok(q('#food-grams'),'amount screen shows');
+inp('#food-grams','150'); ok(/Add 248 kcal/.test(q('[data-action=confirm-food]').textContent),'150g chicken = 248 kcal ('+q('[data-action=confirm-food]').textContent+')');
+click('[data-action=confirm-food]'); ok(q('#modal-root').hidden,'modal closes after add');
+ok(/Chicken breast/.test(qa('.card.meal')[1].textContent),'entry listed in lunch');
+ok(q('.ring .num').textContent==='248','ring shows 248 ('+q('.ring .num').textContent+')');
+click('[data-action=entry-remove]'); ok(q('.ring .num').textContent==='0','entry removed');
+click('[data-action=add-food][data-meal=snacks]'); click('[data-action=new-food]');
+inp('[data-field=ff-name]','Oat milk'); inp('[data-field=ff-serving]','250'); click('[data-action=ff-basis][data-b=serving]');
+inp('[data-field=ff-kcal]','115'); inp('[data-field=ff-p]','2.5'); inp('[data-field=ff-c]','16'); inp('[data-field=ff-f]','3.5'); click('[data-action=ff-save]');
+ok(q('#food-grams')&&q('#food-grams').value==='250','new food jumps to amount with serving prefilled ('+(q('#food-grams')||{}).value+')');
+ok(/Add 115 kcal/.test(q('[data-action=confirm-food]').textContent),'per-serving conversion correct ('+q('[data-action=confirm-food]').textContent+')');
+click('[data-action=confirm-food]'); ok(/Oat milk/.test(qa('.card.meal')[3].textContent),'oat milk in snacks');
+click('[data-action=date][data-n="-1"]'); ok(/Yesterday/.test(q('h1').textContent)&&q('.ring .num').textContent!=='0','yesterday loads seeded log ('+q('.ring .num').textContent+')');
+click('[data-action=date-today]');
+// copy from yesterday, saved meals, edit amount
+ok(q('[data-action=copy-meal][data-meal=breakfast]'),'copy-from-yesterday offered on empty meal');
+click('[data-action=copy-meal][data-meal=breakfast]'); ok(/Oats/.test(qa('.card.meal')[0].textContent),'breakfast copied from yesterday');
+ok(!q('[data-action=copy-meal][data-meal=breakfast]'),'copy button hidden once meal has items');
+click('[data-action=save-meal][data-meal=breakfast]'); inp('[data-field=meal-name]','Usual breakfast'); click('[data-action=save-meal-confirm]'); ok(q('#modal-root').hidden,'meal saved');
+click('[data-action=add-food][data-meal=dinner]'); ok(/Usual breakfast/.test(q('#food-results').textContent),'saved meal listed in add sheet');
+click('[data-action=add-saved-meal]'); ok(/Oats/.test(qa('.card.meal')[2].textContent),'saved meal added to dinner');
+click('.card.meal .list-item.clickable'); ok(q('#food-grams')&&q('#food-grams').value==='80','tap entry opens edit with current grams ('+(q('#food-grams')||{}).value+')');
+inp('#food-grams','40'); ok(q('[data-action=confirm-food]').textContent.trim()==='Save','edit shows Save'); click('[data-action=confirm-food]');
+ok(/40 g/.test(qa('.card.meal')[0].textContent),'entry amount updated');
+// foods tab
+click('[data-action=tab][data-tab=foods]'); ok(/Foods/.test(q('h1').textContent),'foods tab');
+inp('[data-field=library-search]','oat'); ok(/Oat milk/.test(q('#library-list').textContent)&&/custom/.test(q('#library-list').textContent),'library search shows custom food');
+click('#library-list .list-item'); ok(q('[data-field=ff-name]')&&q('[data-field=ff-name]').value==='Oat milk','edit food opens'); click('[data-action=modal-close]');
+click('[data-action=new-food]'); inp('[data-field=ff-name]','Plátano asado'); inp('[data-field=ff-kcal]','120'); click('[data-action=ff-save]');
+inp('[data-field=library-search]','platano'); ok(/Plátano asado/.test(q('#library-list').textContent),'accent-insensitive search');
+// gym
+click('[data-action=tab][data-tab=gym]'); ok(qa('.routine-card').length===3,'3 seeded routines'); ok(qa('details.hist').length===1,'history has seeded workout');
+click('[data-action=edit-routine][data-id=r_push]'); const firstEx=q('#modal .list-item .title').textContent; click('[data-action=rt-move][data-i="1"][data-dir="-1"]'); ok(q('#modal .list-item .title').textContent!==firstEx,'routine exercise reordered'); click('[data-action=modal-close]');
+click('[data-action=start-routine][data-id=r_push]'); ok(qa('.ex-card').length===5,'push workout has 5 exercises');
+const benchCard=[...qa('.ex-card')].find(c=>/Bench Press/.test(c.textContent)); const bi=[...qa('.ex-card')].indexOf(benchCard);
+ok(/60 kg/.test(benchCard.textContent),'previous sets shown for bench');
+ok(q('[data-field=set-weight][data-ei="'+bi+'"][data-si="0"]').value==='60','weight prefilled from last time');
+inp('[data-field=set-weight][data-ei="'+bi+'"][data-si="0"]','70'); inp('[data-field=set-reps][data-ei="'+bi+'"][data-si="0"]','8');
+click('[data-action=toggle-set][data-ei="'+bi+'"][data-si="0"]'); ok(q('.set-row.done'),'set marked done'); ok(!q('#rest-pill').hidden,'rest timer started');
+click('[data-action=rest-skip]'); ok(q('#rest-pill').hidden,'rest skipped');
+click('[data-action=toggle-set][data-ei="'+bi+'"][data-si="1"]'); ok(q('[data-field=set-reps][data-ei="'+bi+'"][data-si="1"]').value==='8','checking an empty set copies previous reps');
+click('[data-action=wk-add-set][data-ei="1"]'); ok(qa('.ex-card')[1].querySelectorAll('.set-row').length===4,'add set works');
+click('[data-action=wk-add-exercise]'); inp('#ex-search','curl'); ok(/Barbell Curl/.test(q('#ex-results').textContent),'exercise search'); click('#ex-results [data-action=pick-exercise]'); ok(qa('.ex-card').length===6,'exercise added to workout');
+click('[data-action=finish-workout]'); ok(qa('details.hist').length===2,'workout finished and in history ('+qa('details.hist').length+')');
+ok(/70/.test(qa('details.hist')[0].textContent),'history shows 70');
+click('[data-action=new-routine]'); inp('[data-field=rt-name]','Upper A'); click('[data-action=rt-add-exercise]'); inp('#ex-search','zzz-new-move'); click('[data-action=create-exercise]');
+ok(q('[data-field=rt-name]')&&/zzz-new-move/.test(q('#modal').textContent),'created exercise lands in routine');
+click('[data-action=rt-save]'); ok(qa('.routine-card').length===4,'routine saved');
+// progress
+click('[data-action=tab][data-tab=progress]'); ok(qa('.chart-wrap').length===3,'three charts (weight, calories, lifts) ('+qa('.chart-wrap').length+')'); ok(qa('.tiles .tile').length===3,'three tiles');
+ok(/7-day average/.test(q('#main').textContent),'moving average legend shown'); ok(q('.chart-wrap .avg path'),'moving average path drawn');
+ok(q('[data-field=progress-ex]')&&/Bench Press/.test(q('[data-field=progress-ex]').textContent),'lifts selector lists bench press');
+ok(/Bench Press/.test(document.body.textContent)&&/70 kg/.test(document.body.textContent),'personal best 70kg');
+inp('#weight-input','77.4'); click('[data-action=log-weight]'); ok(/77.4/.test(qa('.tiles .tile')[0].textContent),'weight logged');
+// settings
+click('[data-action=tab][data-tab=settings]'); click('[data-action=apply-calc]'); ok(q('[data-field=goal-kcal]').value!=='2200','calc applied ('+q('[data-field=goal-kcal]').value+')');
+click('[data-action=set-units][data-v=lb]'); click('[data-action=tab][data-tab=progress]'); ok(/lb/.test(qa('.tiles .tile')[0].textContent),'lb units shown');
+click('[data-action=tab][data-tab=settings]'); click('[data-action=set-units][data-v=kg]');
+ok(/Cloud sync is not set up/.test(q('#main').textContent),'account card explains sync is off');
+click('[data-action=reset]'); click('[data-action=confirm-yes]'); ok(__FL.state.foods.length===57&&__FL.state.foods.every(f=>f.builtin)&&Object.keys(__FL.state.logs).length===0,'reset restores the pristine built-in library ('+__FL.state.foods.length+')'); click('[data-action=set-lang][data-v=en]');
+click('[data-action=set-lang][data-v=es]'); ok(/Ajustes/.test(q('h1').textContent)&&/Idioma/.test(q('#main').textContent),'spanish switch'); click('[data-action=set-lang][data-v=en]');
+// leave an active workout
+click('[data-action=tab][data-tab=gym]'); click('[data-action=start-routine][data-id=r_legs]'); inp('[data-field=set-weight][data-ei="0"][data-si="0"]','100'); inp('[data-field=set-reps][data-ei="0"][data-si="0"]','8'); click('[data-action=toggle-set][data-ei="0"][data-si="0"]'); click('[data-action=rest-skip]');
+}catch(e){out.push('EXC '+e.message+' '+(e.stack||'').split('\n')[1]);}
+out.push('ERRORS '+JSON.stringify(window.__errors)); out.push('DONE');
+document.getElementById('test-out').textContent=out.join('\n');
+// screenshot helper: open tests/ui.html#shot:progress to view a tab with the seeded data and the report hidden
+if(SHOT.startsWith('#shot')){document.getElementById('test-out').style.display='none';const tab=SHOT.split(':')[1];if(tab)click('[data-action=tab][data-tab='+tab+']');}
+</script></body></html>

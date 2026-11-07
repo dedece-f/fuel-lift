@@ -1,0 +1,55 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#000"><link rel="stylesheet" href="/styles.css"></head>
+<body>
+<div class="app"><aside class="sidebar"><div class="brand"><span class="brand-mark"></span><span>Fuel</span></div><nav class="nav" id="nav-side"></nav><div class="sidebar-foot muted" id="sidebar-foot"></div></aside>
+<main class="main" id="main"></main><nav class="tabbar" id="nav-bottom"></nav></div>
+<div class="modal-root" id="modal-root" hidden><div class="modal-backdrop" data-action="modal-close"></div><div class="modal" id="modal"></div></div>
+<div class="rest-pill" id="rest-pill" hidden></div><div class="toast" id="toast" hidden></div>
+<pre id="test-out" style="position:fixed;top:0;left:0;z-index:999;background:#fff;color:#000;font-size:11px;max-height:40vh;overflow:auto"></pre>
+<script>window.__FUEL_LIFT_TEST=true; window.__errors=[]; window.onerror=(m,s,l,c)=>{window.__errors.push(m+' @'+l+':'+c)}; localStorage.removeItem('fuel-lift-sync'); localStorage.setItem('fuel-lift-v1',JSON.stringify({settings:{lang:'en'}}));</script>
+<script src="/app.js"></script>
+<script>
+const out=[];const ok=(c,m)=>out.push((c?'PASS ':'FAIL ')+m);
+const q=s=>document.querySelector(s), qa=s=>document.querySelectorAll(s);
+const click=s=>{const e=q(s); if(!e){out.push('FAIL missing '+s);return;} e.click();};
+const inp=(s,v)=>{const e=q(s); if(!e){out.push('FAIL missing input '+s);return;} e.value=v; e.dispatchEvent(new Event('input',{bubbles:true}));};
+const until=(fn,ms=12000)=>new Promise((res)=>{const t0=Date.now();const i=setInterval(()=>{if(fn()||Date.now()-t0>ms){clearInterval(i);res(fn());}},100);});
+(async()=>{try{
+click('[data-action=add-food][data-meal=snacks]'); ok(q('[data-action=scan]'),'scan button in add-food sheet');
+click('[data-action=scan]'); ok(q('#scan-video')&&q('#scan-manual'),'scanner sheet opens');
+await until(()=>/Type the number/.test(q('#scan-status').textContent),8000); ok(/Type the number|Loading scanner/.test(q('#scan-status').textContent),'no-camera fallback: '+q('#scan-status').textContent);
+inp('#scan-manual','7801610001196'); click('[data-action=scan-manual]');
+ok(/Looking up/.test(q('#scan-status').textContent),'status shows looking up');
+await until(()=>q('[data-field=ff-name]')); ok(q('[data-field=ff-name]'),'food form opened from lookup');
+ok(/Coca/i.test(q('[data-field=ff-name]').value),'name prefilled: '+q('[data-field=ff-name]').value);
+ok(q('[data-field=ff-kcal]').value==='44','kcal prefilled 44 ('+q('[data-field=ff-kcal]').value+')');
+ok(q('[data-field=ff-c]').value==='11','carbs prefilled 11 ('+q('[data-field=ff-c]').value+')');
+ok(/7801610001196/.test(q('#modal').textContent),'barcode shown in form');
+ok(/Found on Open Food Facts/.test(q('#modal').textContent),'note shown');
+click('[data-action=ff-save]'); ok(q('#food-grams'),'after save goes to amount screen'); ok(/Coca/i.test(q('#modal').textContent),'amount screen for product');
+click('[data-action=confirm-food]'); ok(/Coca/i.test(qa('.card.meal')[3].textContent),'product logged in snacks');
+// existing barcode path
+click('[data-action=add-food][data-meal=lunch]'); click('[data-action=scan]'); await until(()=>/Type the number/.test(q('#scan-status').textContent),4000);
+inp('#scan-manual','7801610001196'); click('[data-action=scan-manual]'); await until(()=>q('#food-grams'),3000);
+ok(q('#food-grams')&&/Coca/i.test(q('#modal').textContent),'known barcode jumps straight to amount');
+click('[data-action=modal-close]');
+// not found path
+click('[data-action=add-food][data-meal=dinner]'); click('[data-action=scan]'); await until(()=>/Type the number/.test(q('#scan-status').textContent),4000);
+inp('#scan-manual','7800000000001'); click('[data-action=scan-manual]'); await until(()=>q('[data-field=ff-name]'));
+ok(q('[data-field=ff-name]')&&q('[data-field=ff-name]').value==='','not-found opens empty form'); ok(/Not in Open Food Facts/.test(q('#modal').textContent),'not-found note shown'); ok(/7800000000001/.test(q('#modal').textContent),'barcode kept on form');
+click('[data-action=modal-close]');
+// short code rejected
+click('[data-action=add-food][data-meal=dinner]'); click('[data-action=scan]'); inp('#scan-manual','123'); click('[data-action=scan-manual]'); ok(/does not look like/.test(q('#scan-status').textContent),'short code rejected');
+click('[data-action=modal-close]');
+// digits typed in search offer lookup
+click('[data-action=add-food][data-meal=dinner]'); inp('#food-search','7801610001196'); ok(q('[data-action=lookup-code]'),'lookup row offered for digits'); ok(/Coca/i.test(q('#food-results').textContent),'library food matched by barcode');
+// text search on Open Food Facts
+inp('#food-search','manjar'); ok(q('[data-action=off-search]'),'OFF text search offered'); click('[data-action=off-search]');
+await until(()=>q('[data-action=pick-off]')||/No products|Could not reach/.test(q('#food-results').textContent),15000);
+ok(q('[data-action=pick-off]'),'OFF text search returned products');
+if(q('[data-action=pick-off]')){click('[data-action=pick-off]'); ok(q('#food-grams'),'picking an OFF product opens amount screen'); click('[data-action=confirm-food]'); ok(qa('.card.meal')[2].querySelectorAll('.list-item').length===1,'OFF product logged in dinner');}
+// foods tab scan button
+click('[data-action=tab][data-tab=foods]'); ok(q('[data-action=scan]'),'scan button on foods tab');
+}catch(e){out.push('EXC '+e.message+' '+(e.stack||'').split('\n')[1]);}
+out.push('ERRORS '+JSON.stringify(window.__errors)); out.push('DONE');
+document.getElementById('test-out').textContent=out.join('\n');})();
+</script></body></html>

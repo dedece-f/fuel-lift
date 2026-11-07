@@ -9,17 +9,17 @@ Open `index.html` directly in a browser, or serve the folder (recommended so the
 
     npx serve .          # or: python -m http.server 8080
 
-Then open the printed URL. On a phone, open the same URL and use "Add to Home Screen" for an app-like experience.
+Then open the printed URL. On a phone, open the same URL and use "Add to Home Screen": the app installs with its own icon (it is a PWA), opens full-screen, and keeps working offline. When a new version is deployed, a "New version available" toast offers a reload.
 
 Note: browsers only allow camera access on `localhost` or HTTPS. To scan with your phone's camera while the app is served from your PC over plain HTTP, either expose it over HTTPS (for example with `npx localtunnel --port 3000`), or host the three files on any static HTTPS host (GitHub Pages, Netlify, etc.). Typing the barcode number works everywhere.
 
 ## What is in it
 
-- **Today**: calorie ring vs goal, protein / carbs / fat meters, meals (breakfast, lunch, dinner, snacks). Browse previous days with the arrows.
-- **Foods**: library of ~60 common foods (per 100 g) plus your own. Enter label values per 100 g or per serving.
+- **Today**: calorie ring vs goal, protein / carbs / fat meters, meals (breakfast, lunch, dinner, snacks). Browse previous days with the arrows. Tap an entry to change its amount, copy a meal from the last day you logged it, or save a meal as a favorite and add it again in one tap.
+- **Foods**: library of ~60 common foods (per 100 g) plus your own. Enter label values per 100 g or per serving. Search ignores accents ("platano" finds "plátano"), and typing a product name offers a text search on Open Food Facts.
 - **Barcode scanner**: tap the scan icon in the food search (or Scan on the Foods tab), point the camera at a product, and the nutrition facts are fetched from Open Food Facts (good coverage of Chilean products). You can also type the number under the barcode. Unknown products open an empty form so you can copy the label; the barcode is saved with the food, so next time it is found instantly.
 - **Gym**: routines (Push / Pull / Legs included), workout logger with previous-session hints, rest timer, history with volume and "repeat" button.
-- **Progress**: body weight trend, calories vs goal for the last 14 days, 7-day stats, personal bests.
+- **Progress**: body weight trend with a 7-day average, calories vs goal for the last 14 days, per-exercise top-set chart, 7-day stats, personal bests.
 - **Settings**: goals (manual or calculated from your profile with Mifflin-St Jeor), kg/lb, rest timer length, theme, language, JSON export/import.
 - **Account + cloud sync** (optional): sign in with email and password and your data follows you across devices. Works offline; changes sync when you are back online. See "Cloud sync" below to turn it on.
 
@@ -65,9 +65,18 @@ Notes:
 - Each piece of data (settings, food library, each day's log, each workout) syncs separately with its own timestamp, so two devices only overwrite what actually changed.
 - The first time you sign in on a device that already has local data while the account already has cloud data, the app asks which copy to keep.
 
+## Tests
+
+    npm test            # all suites
+    npm test -- ui      # one suite: ui, barcode or sync
+
+`tests/run.js` serves the folder and drives the real app in a headless Chrome/Edge (set `CHROME=/path/to/browser` if it is not found). The `ui` suite covers logging, foods, workouts, routines, progress and settings; `barcode` talks to the live Open Food Facts API (needs internet); `sync` runs the cloud sync engine against an in-memory stand-in for Firebase, including the first-sign-in choices and remote changes.
+
 ## Files
 
 - `index.html` - shell
 - `styles.css` - design tokens (light/dark), layout, components
 - `app.js` - state, views, charts, event handling, barcode scanner, cloud sync
 - `firebase-config.js` - optional Firebase config for cloud sync (null = local only)
+- `manifest.webmanifest`, `sw.js`, `icons/` - PWA install + offline support
+- `tests/` - headless browser test suites (`npm test`)

@@ -7,7 +7,7 @@
   --border: #e3e5eb;
   --text: #121419;
   --text-2: #4b5160;
-  --muted: #8a90a0;
+  --muted: #6b7183;
   --accent: #5b5ff5;
   --accent-ink: #ffffff;
   --accent-soft: rgba(91, 95, 245, 0.12);
@@ -32,7 +32,7 @@
     --border: #262b35;
     --text: #eef0f4;
     --text-2: #aab0bd;
-    --muted: #6f7686;
+    --muted: #8b92a5;
     --accent: #7c80ff;
     --accent-soft: rgba(124, 128, 255, 0.18);
     --protein: #5aa0ff;
@@ -53,7 +53,7 @@
   --border: #262b35;
   --text: #eef0f4;
   --text-2: #aab0bd;
-  --muted: #6f7686;
+  --muted: #8b92a5;
   --accent: #7c80ff;
   --accent-soft: rgba(124, 128, 255, 0.18);
   --protein: #5aa0ff;
@@ -282,7 +282,7 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
 .meal .meal-head h2 { font-size: 15px; }
 .meal .meal-head .kcal { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 .meal .list-item { padding: 10px 0; }
-.meal .add-row { padding-top: 10px; border-top: 1px solid var(--border); margin-top: 2px; }
+.meal .add-row { padding-top: 10px; border-top: 1px solid var(--border); margin-top: 2px; gap: 4px; }
 .meal .list:empty + .add-row { border-top: 0; padding-top: 4px; }
 
 @media (max-width: 560px) {
@@ -407,6 +407,7 @@ details.hist .ex-line span:last-child { color: var(--text-2); font-variant-numer
 .chart-wrap .series path { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .chart-wrap .series .area { fill: var(--accent); opacity: .08; stroke: none; }
 .chart-wrap .series circle { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.chart-wrap .avg path { fill: none; stroke: var(--text-2); stroke-width: 1.5; stroke-dasharray: 4 4; stroke-linejoin: round; }
 .chart-wrap .bars rect { fill: var(--accent); }
 .chart-wrap .bars rect.over { fill: var(--danger); }
 .chart-wrap .bars rect.empty { fill: var(--surface-3); }

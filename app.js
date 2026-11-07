@@ -14,8 +14,11 @@
   const round = (n, p = 0) => { const f = 10 ** p; return Math.round((Number(n) || 0) * f) / f; };
   const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
   const num = (v, fallback = 0) => { const n = parseFloat(String(v).replace(',', '.')); return Number.isFinite(n) ? n : fallback; };
+  const norm = (v) => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const cap = (v) => (v ? v.charAt(0).toUpperCase() + v.slice(1) : v);
   const fmtDur = (ms) => { const s = Math.floor(ms / 1000); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h ? `${h}:${pad(m)}:${pad(s % 60)}` : `${m}:${pad(s % 60)}`; };
 
+  const TEST = !!window.__FUEL_LIFT_TEST; // set by tests/*.html: no audio, no service worker, internals exposed on window.__FL
   let toastTimer;
   function toast(msg) {
     const el = $('#toast'); el.textContent = msg; el.hidden = false;
@@ -116,6 +119,15 @@
     'This device already has data, and your account also has data in the cloud. Pick one; the other copy is replaced.': 'Este dispositivo ya tiene datos y tu cuenta también tiene datos en la nube. Elige uno; la otra copia se reemplaza.',
     'Use cloud data': 'Usar los datos de la nube', 'Use this device’s data': 'Usar los datos de este dispositivo',
     'This device only. Your cloud data is kept; sign in again to get it back.': 'Solo este dispositivo. Tus datos en la nube se conservan; vuelve a iniciar sesión para recuperarlos.',
+    // v3
+    'Copy from {day}': 'Copiar de {day}', 'Copied {n} items': 'Copiados {n} alimentos', 'Save as meal': 'Guardar comida', 'Saved meals': 'Comidas guardadas',
+    'Name this meal': 'Nombre de la comida', 'e.g. Usual breakfast': 'ej. Desayuno de siempre', 'Meal saved': 'Comida guardada', '{n} items': '{n} alimentos',
+    'Delete saved meal?': '¿Eliminar comida guardada?', 'Edit amount': 'Editar cantidad', 'Updated': 'Actualizado',
+    'Search Open Food Facts for “{q}”': 'Buscar “{q}” en Open Food Facts', 'Searching Open Food Facts…': 'Buscando en Open Food Facts…', 'Open Food Facts': 'Open Food Facts',
+    'No products found on Open Food Facts': 'No hay productos en Open Food Facts', 'Could not reach Open Food Facts': 'No se pudo conectar con Open Food Facts',
+    'Move up': 'Subir', 'Move down': 'Bajar', 'Daily': 'Diario', '7-day average': 'Promedio 7 días', 'Lifts': 'Cargas', 'Top set weight per session': 'Peso máximo por sesión',
+    'Log the same exercise in two sessions to see its trend.': 'Registra el mismo ejercicio en dos sesiones para ver su tendencia.', 'No lifts with weight yet': 'Aún no hay cargas registradas',
+    'New version available': 'Hay una versión nueva', 'Reload': 'Recargar', 'Items': 'Alimentos',
   };
   const FOOD_ES = {
     'Chicken breast, cooked': 'Pechuga de pollo, cocida', 'Turkey breast': 'Pechuga de pavo', 'Beef, lean, cooked': 'Carne de vacuno magra, cocida', 'Pork chop, cooked': 'Chuleta de cerdo, cocida',
@@ -148,14 +160,14 @@
   };
   const locale = () => (lang() === 'es' ? 'es-CL' : 'en-US');
   const fmtInt = (n) => Math.round(n).toLocaleString(locale());
-  const fmtDate = (k, opts = { weekday: 'short', month: 'short', day: 'numeric' }) => parseKey(k).toLocaleDateString(locale(), opts);
+  const fmtDate = (k, opts = { weekday: 'short', month: 'short', day: 'numeric' }) => cap(parseKey(k).toLocaleDateString(locale(), opts));
   const relDay = (k) => { const td = dateKey(); if (k === td) return t('Today'); if (k === addDays(td, -1)) return t('Yesterday'); if (k === addDays(td, 1)) return t('Tomorrow'); return fmtDate(k); };
   // Display names for built-in data (translated while the item is untouched)
   const foodName = (f) => (lang() === 'es' && f.builtin && FOOD_ES[f.name]) || f.name;
   const exName = (e) => (lang() === 'es' && e.builtin && EX_ES[e.name]) || e.name;
   const muscleName = (m) => t(m);
   const routineName = (r) => (lang() === 'es' && /^r_(push|pull|legs)$/.test(r.id) && ['Push', 'Pull', 'Legs'].includes(r.name) ? t(r.name) : r.name);
-  const matches = (shown, raw, s) => shown.toLowerCase().includes(s) || raw.toLowerCase().includes(s);
+  const matches = (shown, raw, s) => norm(shown).includes(s) || norm(raw).includes(s);
 
   /* =========================== Seed data =========================== */
   // Per 100 g: kcal, protein, carbs, fat. serving = grams of one typical portion.
@@ -209,9 +221,10 @@
       goals: { kcal: 2200, p: 150, c: 240, f: 70 },
       profile: { sex: 'male', age: 28, height: 178, weight: 78, activity: 1.55, goal: 'maintain' },
     },
-    foods: SEED_FOODS,
-    exercises: SEED_EXERCISES,
-    routines: SEED_ROUTINES,
+    foods: SEED_FOODS.map((f) => ({ ...f })),            // fresh copies: the seeds must never be mutated
+    exercises: SEED_EXERCISES.map((e) => ({ ...e })),
+    routines: JSON.parse(JSON.stringify(SEED_ROUTINES)),
+    meals: [],       // saved meals: { id, name, items: [entry-like] }
     logs: {},        // dateKey -> { breakfast: [entry], ... }
     weights: [],     // { date, kg }
     workouts: [],    // completed
@@ -253,6 +266,10 @@
     right: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
     play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>',
     scan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M11 8v8M14 8v8M17 8v8"/></svg>',
+    up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>',
+    down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+    copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
+    star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.4 6.3 20.5l1.2-6.4L2.8 9.7l6.4-.8z"/></svg>',
     chev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
   };
 
@@ -300,6 +317,9 @@
     for (const k of keys) for (const e of dayEntries(k)) if (e.foodId && !seen.includes(e.foodId)) seen.push(e.foodId);
     return seen.slice(0, 8);
   };
+  const prevDayWith = (meal) => { const keys = Object.keys(state.logs).filter((k) => k < ui.date && (state.logs[k][meal] || []).length).sort(); return keys[keys.length - 1] || null; };
+  const entryFood = (e) => { const g = e.grams > 0 ? e.grams : 100; return { id: 'entry', name: e.name, kcal: e.kcal / g * 100, p: e.p / g * 100, c: e.c / g * 100, f: e.f / g * 100, serving: null, builtin: false }; };
+  const modalFood = (m) => state.foods.find((x) => x.id === m.foodId) || (m.entry ? entryFood(m.entry) : null);
   const macroDots = (f) => `<span class="macro-dots"><span class="p"><i></i>${round(f.p)}</span><span class="c"><i></i>${round(f.c)}</span><span class="f"><i></i>${round(f.f)}</span></span>`;
 
   /* =========================== TODAY =========================== */
@@ -319,12 +339,12 @@
       return `<div class="card meal">
         <div class="meal-head"><h2>${t(label)}</h2><span class="kcal">${entries.length ? fmtInt(sub.kcal) + ' kcal' : ''}</span></div>
         <div class="list">${entries.map((e) => `
-          <div class="list-item">
+          <div class="list-item clickable" data-action="entry-edit" data-meal="${m}" data-id="${e.id}">
             <div class="grow"><div class="title">${esc(e.name)}</div><div class="sub">${round(e.grams)} g · ${macroDots(e)}</div></div>
             <div class="val">${fmtInt(e.kcal)}</div>
             <button class="icon-btn danger" data-action="entry-remove" data-meal="${m}" data-id="${e.id}" aria-label="${t('Remove')}">${I.x}</button>
           </div>`).join('')}</div>
-        <div class="add-row"><button class="btn ghost sm" data-action="add-food" data-meal="${m}">${I.plus} ${t('Add food')}</button></div>
+        <div class="add-row row wrap"><button class="btn ghost sm" data-action="add-food" data-meal="${m}">${I.plus} ${t('Add food')}</button>${!entries.length && prevDayWith(m) ? `<button class="btn ghost sm" data-action="copy-meal" data-meal="${m}" data-from="${prevDayWith(m)}">${I.copy} ${t('Copy from {day}', { day: relDay(prevDayWith(m)) })}</button>` : ''}${entries.length ? `<button class="btn ghost sm" data-action="save-meal" data-meal="${m}">${I.star} ${t('Save as meal')}</button>` : ''}</div>
       </div>`;
     }).join('');
 
@@ -360,7 +380,8 @@
     renderModal();
   }
   function foodResultsHtml(q) {
-    const s = q.trim().toLowerCase();
+    const s = norm(q.trim());
+    const m = ui.modal;
     let list, head = '';
     if (!s) {
       const recent = recentFoodIds().map((id) => state.foods.find((f) => f.id === id)).filter(Boolean);
@@ -371,12 +392,36 @@
       head = list.length ? (list.length === 1 ? t('{n} result', { n: 1 }) : t('{n} results', { n: list.length })) : '';
     }
     const codeRow = /^\d{8,14}$/.test(s) ? `<div class="food-result" data-action="lookup-code" data-code="${s}" style="color:var(--accent)"><div class="grow"><div class="title">${I.scan} ${t('Look up barcode {code}', { code: s })}</div><div class="sub">${t('Searches Open Food Facts')}</div></div></div>` : '';
-    if (!list.length) return codeRow + `<div class="empty"><strong>${t('No foods match “{q}”', { q: esc(q) })}</strong>${codeRow ? t('Or create it below.') : t('Create it below and it will be saved to your library.')}</div>`;
-    return codeRow + `<div class="small muted" style="padding:6px 8px 0">${head}</div>` + list.map((f) => `
+    let offRow = '';
+    if (s.length >= 3 && !/^\d+$/.test(s)) {
+      const off = m && m.off && m.off.q === s ? m.off : null;
+      if (!off) offRow = `<div class="food-result" data-action="off-search" data-q="${esc(q.trim())}" style="color:var(--accent)"><div class="grow"><div class="title">${t('Search Open Food Facts for “{q}”', { q: esc(q.trim()) })}</div></div></div>`;
+      else if (off.loading) offRow = `<div class="small muted" style="padding:10px 8px">${t('Searching Open Food Facts…')}</div>`;
+      else if (off.error) offRow = `<div class="small muted" style="padding:10px 8px">${t('Could not reach Open Food Facts')}</div>`;
+      else if (!off.items.length) offRow = `<div class="small muted" style="padding:10px 8px">${t('No products found on Open Food Facts')}</div>`;
+      else offRow = `<div class="small muted" style="padding:10px 8px 0;font-weight:600">${t('Open Food Facts')}</div>` + off.items.map((it, i) => `<div class="food-result" data-action="pick-off" data-i="${i}"><div class="grow"><div class="title">${esc(it.name)}</div><div class="sub">${t('per 100 g')} · ${macroDots(it)}</div></div><div class="val">${Math.round(it.kcal)}</div></div>`).join('');
+    }
+    const savedRows = !s && state.meals.length ? `<div class="small muted" style="padding:6px 8px 0">${t('Saved meals')}</div>` + state.meals.map((sm) => { const tot = sumMacros(sm.items); return `<div class="food-result" data-action="add-saved-meal" data-id="${sm.id}"><div class="grow"><div class="title">${I.star} ${esc(sm.name)}</div><div class="sub">${t('{n} items', { n: sm.items.length })} · ${fmtInt(tot.kcal)} kcal</div></div><button class="icon-btn danger" data-action="del-saved-meal" data-id="${sm.id}" aria-label="${t('Delete')}">${I.x}</button></div>`; }).join('') : '';
+    if (!list.length) return codeRow + offRow + `<div class="empty"><strong>${t('No foods match “{q}”', { q: esc(q) })}</strong>${codeRow || offRow ? t('Or create it below.') : t('Create it below and it will be saved to your library.')}</div>`;
+    return codeRow + savedRows + `<div class="small muted" style="padding:6px 8px 0">${head}</div>` + list.map((f) => `
       <div class="food-result" data-action="pick-food" data-id="${f.id}">
         <div class="grow"><div class="title">${esc(foodName(f))}</div><div class="sub">${t('per 100 g')} · ${macroDots(f)}</div></div>
         <div class="val">${f.kcal}</div>
-      </div>`).join('');
+      </div>`).join('') + offRow;
+  }
+  async function offSearch(q) {
+    const m = ui.modal; if (!m || m.type !== 'addFood') return;
+    const key = norm(q.trim()); m.off = { q: key, loading: true, items: [] };
+    const box = $('#food-results'); if (box) box.innerHTML = foodResultsHtml(m.search);
+    try {
+      const r = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q.trim())}&search_simple=1&action=process&json=1&page_size=12&cc=cl&lc=es&fields=code,product_name,product_name_es,brands,nutriments,serving_quantity`);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      const items = (j.products || []).map(productToFood).filter((x) => x && x.name && x.kcal !== '');
+      if (ui.modal?.type === 'addFood' && ui.modal.off?.q === key) { ui.modal.off = { q: key, loading: false, items }; const b = $('#food-results'); if (b) b.innerHTML = foodResultsHtml(ui.modal.search); }
+    } catch (e) {
+      if (ui.modal?.type === 'addFood' && ui.modal.off?.q === key) { ui.modal.off = { q: key, loading: false, items: [], error: true }; const b = $('#food-results'); if (b) b.innerHTML = foodResultsHtml(ui.modal.search); }
+    }
   }
   function modalAddFood() {
     const m = ui.modal;
@@ -386,19 +431,24 @@
         <div class="results" id="food-results">${foodResultsHtml(m.search)}</div>
         <div class="modal-foot"><button class="btn" data-action="new-food" data-meal="${m.meal}">${I.plus} ${t('Create new food')}</button></div>`;
     }
-    const f = state.foods.find((x) => x.id === m.foodId);
+    const f = modalFood(m);
     const grams = m.grams ?? f.serving ?? 100;
     const mac = macrosFor(f, grams);
     const chips = [...new Set([f.serving, 50, 100, 150, 200].filter(Boolean))].slice(0, 5);
-    return `<div class="modal-head"><button class="icon-btn" data-action="pick-food" data-id="">${I.left}</button><h2 style="flex:1">${esc(foodName(f))}</h2><button class="icon-btn" data-action="modal-close">${I.x}</button></div>
+    return `<div class="modal-head">${m.editId ? '' : `<button class="icon-btn" data-action="pick-food" data-id="">${I.left}</button>`}<h2 style="flex:1">${esc(foodName(f))}</h2><button class="icon-btn" data-action="modal-close">${I.x}</button></div>
+      ${m.editId ? `<p class="small muted" style="margin:-6px 0 12px">${t('Edit amount')}</p>` : ''}
       <div class="field"><label>${t('Amount')}</label>
         <div class="input-row"><div class="input-suffix" style="flex:1"><input class="input" type="number" inputmode="decimal" id="food-grams" value="${round(grams, 1)}" min="0" step="1" data-field="food-grams" autofocus /><span>g</span></div>
         <select class="input" style="width:auto" data-field="food-meal">${MEALS.map(([k, l]) => `<option value="${k}" ${k === m.meal ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></div>
       </div>
       <div class="chips" style="margin-top:10px">${chips.map((g) => `<button class="chip ${g === grams ? 'active' : ''}" data-action="food-chip" data-g="${g}">${g === f.serving ? t('1 serving') + ' · ' : ''}${g} g</button>`).join('')}</div>
       <div class="summary-box" style="margin-top:14px" id="food-summary">${summaryHtml(mac)}</div>
-      <div class="modal-foot"><button class="btn primary" data-action="confirm-food">${t('Add {n} kcal', { n: fmtInt(mac.kcal) })}</button></div>`;
+      <div class="modal-foot"><button class="btn primary" data-action="confirm-food">${m.editId ? t('Save') : t('Add {n} kcal', { n: fmtInt(mac.kcal) })}</button></div>`;
   }
+  const modalSaveMeal = () => `<div class="modal-head"><h2>${t('Save as meal')}</h2><button class="icon-btn" data-action="modal-close">${I.x}</button></div>
+      <div class="field"><label>${t('Name this meal')}</label><input class="input" id="meal-name" data-field="meal-name" value="${esc(ui.modal.name)}" placeholder="${t('e.g. Usual breakfast')}" autofocus /></div>
+      <p class="small muted" style="margin-top:10px">${t('{n} items', { n: ui.modal.items.length })} · ${ui.modal.items.map((e) => esc(e.name)).join(', ')}</p>
+      <div class="modal-foot"><button class="btn primary" data-action="save-meal-confirm">${t('Save')}</button></div>`;
   const summaryHtml = (mac) => `<div><div class="num">${fmtInt(mac.kcal)}</div><div class="lbl">kcal</div></div><div><div class="num">${round(mac.p)} g</div><div class="lbl">${t('Protein')}</div></div><div><div class="num">${round(mac.c)} g</div><div class="lbl">${t('Carbs')}</div></div><div><div class="num">${round(mac.f)} g</div><div class="lbl">${t('Fat')}</div></div>`;
 
   function addEntry(meal, food, grams) {
@@ -514,14 +564,18 @@
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const j = await r.json();
     if (!j.product || j.status === 0) return null;
-    const p = j.product, n = p.nutriments || {};
+    return productToFood(j.product);
+  }
+  function productToFood(p) {
+    if (!p) return null;
+    const n = p.nutriments || {};
     let kcal = n['energy-kcal_100g'];
     if (kcal == null && n['energy-kj_100g'] != null) kcal = n['energy-kj_100g'] / 4.184;
     if (kcal == null && n['energy_100g'] != null) kcal = n['energy_100g'] / 4.184;
     const base = (p.product_name_es || p.product_name || '').trim(), brand = (p.brands || '').split(',')[0].trim();
     const name = [base, brand && !base.toLowerCase().includes(brand.toLowerCase()) ? brand : ''].filter(Boolean).join(' · ');
     const v = (x) => (x == null || x === '' ? '' : round(Number(x), 1));
-    return { name: name || '', kcal: v(kcal), p: v(n.proteins_100g), c: v(n.carbohydrates_100g), f: v(n.fat_100g), serving: p.serving_quantity ? round(Number(p.serving_quantity), 0) : '' };
+    return { name: name || '', kcal: v(kcal), p: v(n.proteins_100g) || 0, c: v(n.carbohydrates_100g) || 0, f: v(n.fat_100g) || 0, serving: p.serving_quantity ? round(Number(p.serving_quantity), 0) : '', barcode: p.code ? String(p.code) : '' };
   }
   async function handleBarcode(raw) {
     const code = String(raw).replace(/\D/g, '');
@@ -551,7 +605,7 @@
 
   /* =========================== FOODS =========================== */
   const libraryFiltered = (q) => {
-    const s = q.trim().toLowerCase();
+    const s = norm(q.trim());
     return state.foods.filter((f) => !s || matches(foodName(f), f.name, s) || (f.barcode && f.barcode.includes(s))).sort((a, b) => (a.builtin === b.builtin ? foodName(a).localeCompare(foodName(b), locale()) : a.builtin ? 1 : -1));
   };
   function viewFoods() {
@@ -664,14 +718,23 @@
   }
 
   // Rest timer
-  let restEnd = 0, restTimer;
+  let restEnd = 0, restTimer, audioCtx;
+  function beep() {
+    if (TEST || navigator.webdriver) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const now = audioCtx.currentTime;
+      [0, 0.18].forEach((off) => { const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.type = 'sine'; o.frequency.value = 880; o.connect(g); g.connect(audioCtx.destination); g.gain.setValueAtTime(0.0001, now + off); g.gain.exponentialRampToValueAtTime(0.25, now + off + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, now + off + 0.15); o.start(now + off); o.stop(now + off + 0.16); });
+    } catch {}
+  }
   function startRest(sec = state.settings.restSeconds) {
     if (!sec) return;
+    if (!TEST && !navigator.webdriver) { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch {} }
     restEnd = Date.now() + sec * 1000; clearInterval(restTimer); restTimer = setInterval(tickRest, 250); tickRest();
   }
   function tickRest() {
     const pill = $('#rest-pill'); const left = Math.ceil((restEnd - Date.now()) / 1000);
-    if (left <= 0) { stopRest(); if (navigator.vibrate) navigator.vibrate(200); toast(t('Rest over — next set')); return; }
+    if (left <= 0) { stopRest(); if (navigator.vibrate) navigator.vibrate([150, 80, 150]); beep(); toast(t('Rest over — next set')); return; }
     pill.hidden = false;
     pill.innerHTML = `<span>${t('Rest {t}', { t: fmtDur(left * 1000) })}</span><button data-action="rest-add">+30s</button><button data-action="rest-skip">${t('Skip')}</button>`;
   }
@@ -695,6 +758,7 @@
           <div class="grow"><div class="title">${esc(exDisplay(e.exId))}</div><div class="sub">${esc(muscleName(exById(e.exId)?.muscle || ''))}</div></div>
           <div class="input-suffix" style="width:72px"><input class="input" type="number" inputmode="numeric" value="${e.sets}" min="1" data-field="rt-sets" data-i="${i}" style="padding-right:36px;text-align:center" /><span>${t('sets')}</span></div>
           <div class="input-suffix" style="width:86px"><input class="input" value="${esc(e.reps)}" data-field="rt-reps" data-i="${i}" placeholder="8-12" style="padding-right:36px;text-align:center" /><span>${t('reps')}</span></div>
+          <div class="stack" style="gap:0"><button class="icon-btn" data-action="rt-move" data-i="${i}" data-dir="-1" aria-label="${t('Move up')}" ${i === 0 ? 'disabled style="opacity:.3"' : ''}>${I.up}</button><button class="icon-btn" data-action="rt-move" data-i="${i}" data-dir="1" aria-label="${t('Move down')}" ${i === d.exercises.length - 1 ? 'disabled style="opacity:.3"' : ''}>${I.down}</button></div>
           <button class="icon-btn danger" data-action="rt-remove" data-i="${i}" aria-label="${t('Remove')}">${I.x}</button>
         </div>`).join('') : `<div class="empty">${t('No exercises yet. Tap “Add” to pick from the library.')}</div>`}</div>
       <div class="modal-foot">${ui.modal.routineId ? `<button class="btn danger" data-action="rt-delete">${t('Delete')}</button>` : ''}<button class="btn primary" data-action="rt-save">${t('Save routine')}</button></div>`;
@@ -706,12 +770,12 @@
     renderModal();
   }
   function exerciseResultsHtml(q) {
-    const s = q.trim().toLowerCase();
-    const list = state.exercises.filter((e) => !s || matches(exName(e), e.name, s) || muscleName(e.muscle).toLowerCase().includes(s) || e.muscle.toLowerCase().includes(s));
+    const s = norm(q.trim());
+    const list = state.exercises.filter((e) => !s || matches(exName(e), e.name, s) || norm(muscleName(e.muscle)).includes(s) || norm(e.muscle).includes(s));
     const groups = {};
     for (const e of list) (groups[e.muscle] = groups[e.muscle] || []).push(e);
     const html = Object.keys(groups).sort((a, b) => muscleName(a).localeCompare(muscleName(b), locale())).map((g) => `<div class="small muted" style="padding:10px 8px 2px;font-weight:600">${esc(muscleName(g))}</div>` + groups[g].map((e) => `<div class="food-result" data-action="pick-exercise" data-id="${e.id}"><div class="grow"><div class="title">${esc(exName(e))}</div></div></div>`).join('')).join('');
-    const create = s && !list.some((e) => exName(e).toLowerCase() === s) ? `<div class="food-result" data-action="create-exercise" style="color:var(--accent)"><div class="grow"><div class="title">${I.plus} ${t('Create “{q}”', { q: esc(q.trim()) })}</div></div></div>` : '';
+    const create = s && !list.some((e) => norm(exName(e)) === s) ? `<div class="food-result" data-action="create-exercise" style="color:var(--accent)"><div class="grow"><div class="title">${I.plus} ${t('Create “{q}”', { q: esc(q.trim()) })}</div></div></div>` : '';
     return (html || '') + create || `<div class="empty">${t('No exercises match.')}</div>`;
   }
   function modalExPicker() {
@@ -735,6 +799,13 @@
 
     const kcalData = Array.from({ length: 14 }, (_, i) => { const k = addDays(today, -(13 - i)); return { key: k, label: fmtDate(k, { weekday: 'narrow' }), value: sumMacros(dayEntries(k)).kcal }; });
     const weightData = weights.filter((w) => w.date >= addDays(today, -90)).map((w) => ({ key: w.date, value: toDisplayW(w.kg) }));
+    const wAvg7 = weightData.map((pt) => { const from = addDays(pt.key, -6); const win = weights.filter((w) => w.date >= from && w.date <= pt.key); return round(toDisplayW(win.reduce((a, w) => a + w.kg, 0) / win.length), 1); });
+    // per-exercise progression: top set weight per session
+    const exSessions = {};
+    for (const w of [...state.workouts].sort((a, b) => a.date.localeCompare(b.date))) for (const e of w.exercises) { const top = Math.max(0, ...e.sets.filter((x) => x.done && x.weight).map((x) => x.weight)); if (top > 0) (exSessions[e.exId] = exSessions[e.exId] || { name: exDisplay(e.exId, e.name), pts: [] }).pts.push({ key: w.date, value: toDisplayW(top), ts: w.endedAt }); }
+    const exOptions = Object.entries(exSessions).sort((a, b) => b[1].pts.length - a[1].pts.length || a[1].name.localeCompare(b[1].name, locale()));
+    if (!ui.progressEx || !exSessions[ui.progressEx]) ui.progressEx = exOptions[0] ? exOptions[0][0] : null;
+    const exPts = ui.progressEx ? Object.values(exSessions[ui.progressEx].pts.reduce((acc, pt) => { if (!acc[pt.key] || pt.value > acc[pt.key].value) acc[pt.key] = pt; return acc; }, {})).sort((a, b) => a.key.localeCompare(b.key)) : [];
 
     const bests = {};
     for (const w of state.workouts) for (const e of w.exercises) for (const s of e.sets) if (s.weight && (!bests[e.exId] || s.weight > bests[e.exId].weight || (s.weight === bests[e.exId].weight && s.reps > bests[e.exId].reps))) bests[e.exId] = { name: exDisplay(e.exId, e.name), weight: s.weight, reps: s.reps, date: w.date };
@@ -751,7 +822,12 @@
       <div class="section"><div class="section-head"><h3>${t('Body weight')}</h3><span class="small muted">${t('last 90 days')}</span></div>
         <div class="card">
           <div class="input-row" style="margin-bottom:14px"><div class="input-suffix" style="flex:1"><input class="input" type="number" inputmode="decimal" id="weight-input" placeholder="${todayW ? toDisplayW(todayW.kg) : t('Today’s weight')}" value="" /><span>${unit()}</span></div><button class="btn primary" data-action="log-weight">${todayW ? t('Update') : t('Log')}</button></div>
-          ${weightData.length >= 2 ? lineChart(weightData, { unit: unit() }) : `<div class="empty"><strong>${weightData.length ? t('One entry so far') : t('No weight logged yet')}</strong>${t('Log a couple of days to see the trend line.')}</div>`}
+          ${weightData.length >= 2 ? lineChart(weightData, { unit: unit(), avg: wAvg7 }) + `<div class="chart-legend"><span><i style="background:var(--accent)"></i>${t('Daily')}</span><span><i style="background:var(--text-2);height:0;border-top:2px dashed var(--text-2)"></i>${t('7-day average')}</span></div>` : `<div class="empty"><strong>${weightData.length ? t('One entry so far') : t('No weight logged yet')}</strong>${t('Log a couple of days to see the trend line.')}</div>`}
+        </div></div>
+      <div class="section"><div class="section-head"><h3>${t('Lifts')}</h3><span class="small muted">${t('Top set weight per session')}</span></div>
+        <div class="card">
+          ${exOptions.length ? `<select class="input" data-field="progress-ex" style="margin-bottom:14px">${exOptions.map(([id, o]) => `<option value="${id}" ${id === ui.progressEx ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select>` : ''}
+          ${exPts.length >= 2 ? lineChart(exPts, { unit: unit() }) : `<div class="empty"><strong>${exOptions.length ? t('One entry so far') : t('No lifts with weight yet')}</strong>${t('Log the same exercise in two sessions to see its trend.')}</div>`}
         </div></div>
       <div class="section"><div class="section-head"><h3>${t('Calories')}</h3><span class="small muted">${t('last 14 days')}</span></div>
         <div class="card">${barChart(kcalData, state.settings.goals.kcal)}<div class="chart-legend"><span><i style="background:var(--accent)"></i>${t('Eaten')}</span><span><i style="background:var(--text-2);height:0;border-top:2px dashed var(--text-2)"></i>${t('Goal {n}', { n: fmtInt(state.settings.goals.kcal) })}</span></div></div></div>
@@ -759,11 +835,11 @@
   }
 
   /* --------- Charts (SVG) --------- */
-  function lineChart(data, { unit: u }) {
+  function lineChart(data, { unit: u, avg = null }) {
     const W = 600, H = 220, P = { t: 14, r: 12, b: 28, l: 38 };
     const xs = data.map((d) => parseKey(d.key).getTime());
     const x0 = Math.min(...xs), x1 = Math.max(...xs);
-    const vals = data.map((d) => d.value);
+    const vals = data.map((d) => d.value).concat(avg || []);
     let lo = Math.min(...vals), hi = Math.max(...vals); const padV = Math.max((hi - lo) * 0.25, 0.5); lo -= padV; hi += padV;
     const X = (tm) => P.l + (x1 === x0 ? 0.5 : (tm - x0) / (x1 - x0)) * (W - P.l - P.r);
     const Y = (v) => P.t + (1 - (v - lo) / (hi - lo)) * (H - P.t - P.b);
@@ -778,11 +854,12 @@
         <g class="axis">${grid.map((g) => `<text x="${P.l - 8}" y="${(Y(g) + 4).toFixed(1)}" text-anchor="end">${round(g, 1)}</text>`).join('')}
           ${labelIdx.map((i) => `<text x="${pts[i][0].toFixed(1)}" y="${H - 8}" text-anchor="${i === 0 ? 'start' : i === data.length - 1 ? 'end' : 'middle'}">${fmtDate(data[i].key, { month: 'short', day: 'numeric' })}</text>`).join('')}</g>
         <g class="series"><path class="area" d="${area}"/><path d="${path}"/>${data.length <= 40 ? pts.map((p) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="4"/>`).join('') : ''}</g>
+        ${avg ? `<g class="avg"><path d="${avg.map((v, i) => `${i ? 'L' : 'M'}${X(xs[i]).toFixed(1)},${Y(v).toFixed(1)}`).join(' ')}"/></g>` : ''}
         <line class="hover-line" y1="${P.t}" y2="${H - P.b}" x1="0" x2="0"/>
         <rect class="hit" x="${P.l}" y="0" width="${W - P.l - P.r}" height="${H}"/>
       </svg>
       <div class="chart-tip"></div>
-      <script type="application/json" class="chart-data">${JSON.stringify(pts.map((p, i) => ({ x: p[0], y: p[1], label: fmtDate(data[i].key), value: data[i].value })))}</script>
+      <script type="application/json" class="chart-data">${JSON.stringify(pts.map((p, i) => ({ x: p[0], y: p[1], label: fmtDate(data[i].key), value: data[i].value, avg: avg ? avg[i] : null })))}</script>
     </div>`;
   }
   function barChart(data, goal) {
@@ -822,7 +899,7 @@
         let best = pts[0]; for (const p of pts) if (Math.abs(p.x - px) < Math.abs(best.x - px)) best = p;
         const sx = best.x / vb.width * r.width, sy = best.y / vb.height * r.height;
         tip.style.left = `${sx}px`; tip.style.top = `${sy}px`; tip.style.opacity = 1;
-        tip.innerHTML = isBar ? `${best.label}<br><b>${best.value ? fmtInt(best.value) + ' kcal' : t('not logged')}</b>` : `${best.label}<br><b>${best.value} ${u}</b>`;
+        tip.innerHTML = isBar ? `${best.label}<br><b>${best.value ? fmtInt(best.value) + ' kcal' : t('not logged')}</b>` : `${best.label}<br><b>${best.value} ${u}</b>${best.avg != null ? `<br><span style="opacity:.75">${t('7-day average')}: ${best.avg}</span>` : ''}`;
         line.setAttribute('x1', best.x); line.setAttribute('x2', best.x); line.style.opacity = .6;
       };
       const leave = () => { tip.style.opacity = 0; line.style.opacity = 0; };
@@ -834,23 +911,25 @@
   // Each section (settings, foods, ..., one per logged day, one per workout) has its own
   // last-modified time. Newer wins per section, so devices only overwrite what changed.
   const SYNC_KEY = 'fuel-lift-sync';
-  const CORE = ['settings', 'foods', 'exercises', 'routines', 'weights', 'activeWorkout'];
+  const CORE = ['settings', 'exercises', 'routines', 'weights', 'activeWorkout', 'meals'];
   const cloud = { adapter: null, user: null, status: 'off', error: '', busy: false, unsub: [], dirty: new Set(), pushTimer: null, retryTimer: null, pendingRender: false };
   const sync = (() => { try { const v = JSON.parse(localStorage.getItem(SYNC_KEY)); return v && typeof v === 'object' ? v : {}; } catch { return {}; } })();
   if (!sync.mtimes) sync.mtimes = {};
   const snap = {}, wkMonths = {};
-  const saveSync = () => localStorage.setItem(SYNC_KEY, JSON.stringify({ mtimes: sync.mtimes, uid: sync.uid || null, migrated: !!sync.migrated }));
+  const saveSync = () => localStorage.setItem(SYNC_KEY, JSON.stringify({ mtimes: sync.mtimes, uid: sync.uid || null, migrated: !!sync.migrated, everSignedIn: !!sync.everSignedIn }));
   const clean = (v) => (v === undefined ? null : JSON.parse(JSON.stringify(v)));
   function sectionValues() {
     const out = {};
     for (const k of CORE) out['core:' + k] = state[k] ?? null;
+    for (const f of state.foods) out['food:' + f.id] = f;
     for (const d of Object.keys(state.logs)) out['log:' + d] = state.logs[d];
     for (const w of state.workouts) out['wk:' + w.id] = w;
     return out;
   }
   function syncInitSnapshot() {
     const vals = sectionValues(); const d = defaultState(); const now = Date.now();
-    const defaults = { 'core:settings': d.settings, 'core:foods': d.foods, 'core:exercises': d.exercises, 'core:routines': d.routines, 'core:weights': d.weights, 'core:activeWorkout': null };
+    const defaults = { 'core:settings': d.settings, 'core:exercises': d.exercises, 'core:routines': d.routines, 'core:weights': d.weights, 'core:activeWorkout': null, 'core:meals': [] };
+    for (const f of d.foods) defaults['food:' + f.id] = f;
     for (const k of Object.keys(vals)) {
       snap[k] = JSON.stringify(vals[k]);
       if (k.startsWith('wk:')) wkMonths[k.slice(3)] = String(vals[k].date || '').slice(0, 7);
@@ -884,6 +963,7 @@
     for (const k of keys) {
       const ts = sync.mtimes[k] || Date.now();
       if (k.startsWith('core:')) add(['users', uid], k.slice(5), null, clean(vals[k]), ts);
+      else if (k.startsWith('food:')) add(['users', uid, 'foods', 'all'], 'items', k.slice(5), clean(vals[k] || null), ts);
       else if (k.startsWith('log:')) { const d = k.slice(4); add(['users', uid, 'logs', d.slice(0, 7)], 'days', d, clean(vals[k] || {}), ts); }
       else if (k.startsWith('wk:')) { const id = k.slice(3); const w = vals[k] || null; const month = w ? String(w.date).slice(0, 7) : wkMonths[id]; if (!month) continue; add(['users', uid, 'workouts', month], 'items', id, clean(w), ts); }
     }
@@ -900,6 +980,7 @@
   function startListeners(uid) {
     stopListeners();
     cloud.unsub.push(cloud.adapter.listenDoc(['users', uid], (data) => applyRemoteCore(data)));
+    cloud.unsub.push(cloud.adapter.listenCollection(['users', uid, 'foods'], (docs) => { for (const { data } of docs) applyRemoteFoods(data); }));
     cloud.unsub.push(cloud.adapter.listenCollection(['users', uid, 'logs'], (docs) => { for (const { data } of docs) applyRemoteLogs(data); }));
     cloud.unsub.push(cloud.adapter.listenCollection(['users', uid, 'workouts'], (docs) => { for (const { id, data } of docs) applyRemoteWorkouts(id, data); }));
   }
@@ -917,6 +998,20 @@
     for (const d of Object.keys(mt)) {
       const k = 'log:' + d;
       if (mt[d] > (sync.mtimes[k] || 0)) { state.logs[d] = (data.days && data.days[d]) || {}; sync.mtimes[k] = mt[d]; snap[k] = JSON.stringify(state.logs[d]); changed = true; }
+    }
+    if (changed) afterRemote();
+  }
+  function applyRemoteFoods(data) {
+    if (!data) return; const mt = data.mtimes || {}; let changed = false;
+    for (const id of Object.keys(mt)) {
+      const k = 'food:' + id;
+      if (mt[id] > (sync.mtimes[k] || 0)) {
+        const f = data.items ? data.items[id] : null;
+        const i = state.foods.findIndex((x) => x.id === id);
+        if (f) { if (i >= 0) state.foods[i] = f; else state.foods.unshift(f); snap[k] = JSON.stringify(f); }
+        else { if (i >= 0) state.foods.splice(i, 1); delete snap[k]; }
+        sync.mtimes[k] = mt[id]; changed = true;
+      }
     }
     if (changed) afterRemote();
   }
@@ -944,15 +1039,28 @@
   async function initCloud() {
     const cfg = window.FUEL_LIFT_FIREBASE; const fake = window.__FUEL_LIFT_CLOUD;
     if (!cfg && !fake) { cloud.status = 'off'; return; }
+    // Load the SDK right away only when this device has signed in before; otherwise wait until someone taps Sign in.
+    if (fake || sync.uid || sync.everSignedIn) return ensureCloud();
+    cloud.status = 'idle';
+  }
+  async function ensureCloud() {
+    if (cloud.adapter) return true;
+    if (cloud.loading) return cloud.loading;
+    const cfg = window.FUEL_LIFT_FIREBASE; const fake = window.__FUEL_LIFT_CLOUD;
     cloud.status = 'loading'; if (ui.tab === 'settings') render();
-    try { cloud.adapter = fake || await firebaseAdapter(cfg); } catch (e) { setStatus('error', t('Could not load the sync module')); return; }
-    cloud.status = 'signedout';
-    cloud.adapter.onAuth((user) => onAuthChange(user));
-    if (ui.tab === 'settings') render();
+    cloud.loading = (async () => {
+      try { cloud.adapter = fake || await firebaseAdapter(cfg); } catch (e) { cloud.loading = null; setStatus('error', t('Could not load the sync module')); return false; }
+      cloud.status = 'signedout';
+      cloud.adapter.onAuth((user) => onAuthChange(user));
+      if (ui.tab === 'settings') render();
+      return true;
+    })();
+    return cloud.loading;
   }
   async function onAuthChange(user) {
     cloud.user = user;
     if (!user) { stopListeners(); clearTimeout(cloud.pushTimer); setStatus('signedout'); return; }
+    if (!sync.everSignedIn) { sync.everSignedIn = true; saveSync(); }
     setStatus('syncing');
     if (sync.uid !== user.uid) await firstSignIn(user.uid);
     else { startListeners(user.uid); schedulePush(0); }
@@ -986,7 +1094,7 @@
     if (!email || !pw) return toast(t('Enter your email and password'));
     if (kind === 'signUp' && pw.length < 6) return toast(t('Password must be at least 6 characters'));
     cloud.busy = true; render();
-    try { await cloud.adapter[kind](email, pw); a.password = ''; toast(kind === 'signUp' ? t('Account created') : t('Welcome back!')); }
+    try { if (!(await ensureCloud())) return; await cloud.adapter[kind](email, pw); a.password = ''; toast(kind === 'signUp' ? t('Account created') : t('Welcome back!')); }
     catch (e) { toast(describeErr(e)); }
     finally { cloud.busy = false; if (ui.tab === 'settings') render(); }
   }
@@ -1020,7 +1128,7 @@
       return `<span class="dot ok"></span>${t('Synced')}`;
     };
     if (st === 'off') body = `<p class="small muted">${t('Cloud sync is not set up for this copy of the app. See the README to connect a Firebase project.')}</p>`;
-    else if (st === 'loading') body = `<p class="small muted">${t('Loading…')}</p>`;
+    else if (st === 'loading' && !cloud.busy) body = `<p class="small muted">${t('Loading…')}</p>`;
     else if (!cloud.user) body = `<div class="stack">
         <div class="grid-2">
           <div class="field"><label>${t('Email')}</label><input class="input" type="email" autocomplete="email" inputmode="email" data-field="auth-email" value="${esc(a.email)}" /></div>
@@ -1095,12 +1203,12 @@
   function renderModal() {
     const root = $('#modal-root'), box = $('#modal');
     if (!ui.modal) { stopScanner(); root.hidden = true; box.innerHTML = ''; return; }
-    const views = { addFood: modalAddFood, foodForm: modalFoodForm, routine: modalRoutine, exPicker: modalExPicker, confirm: modalConfirm, scan: modalScan, syncChoice: modalSyncChoice };
+    const views = { addFood: modalAddFood, foodForm: modalFoodForm, routine: modalRoutine, exPicker: modalExPicker, confirm: modalConfirm, scan: modalScan, syncChoice: modalSyncChoice, saveMeal: modalSaveMeal };
     if (ui.modal.type !== 'scan') stopScanner();
     box.innerHTML = views[ui.modal.type]();
     root.hidden = false;
     if (ui.modal.type === 'scan') startScanner();
-    const focus = $('#food-search, #ex-search, [autofocus]', box); if (focus && matchMedia('(min-width: 640px)').matches) { focus.focus(); if (focus.select) focus.select(); }
+    const focus = $('#food-search, #ex-search, #meal-name, [autofocus]', box); if (focus && matchMedia('(min-width: 640px)').matches) { focus.focus(); if (focus.select) focus.select(); }
   }
   function closeModal() { ui.modal = null; renderModal(); }
   function confirm(title, text, onYes, yesLabel = t('Delete')) { ui.modal = { type: 'confirm', title, text, onYes, yesLabel, prev: ui.modal }; renderModal(); }
@@ -1119,7 +1227,24 @@
       'add-food'() { openAddFood(d.meal); },
       'pick-food'() { m.foodId = d.id || null; m.grams = null; renderModal(); },
       'food-chip'() { m.grams = Number(d.g); renderModal(); },
-      'confirm-food'() { const f = state.foods.find((x) => x.id === m.foodId); const grams = m.grams ?? f.serving ?? 100; if (!(grams > 0)) return toast(t('Enter an amount')); addEntry(m.meal, f, grams); closeModal(); render(); toast(t('Added {name}', { name: foodName(f) })); },
+      'confirm-food'() {
+        const f = modalFood(m); const grams = m.grams ?? f.serving ?? 100; if (!(grams > 0)) return toast(t('Enter an amount'));
+        if (m.editId) {
+          const src = state.logs[ui.date]?.[m.origMeal] || []; const old = src.find((e) => e.id === m.editId); if (!old) return closeModal();
+          state.logs[ui.date][m.origMeal] = src.filter((e) => e.id !== m.editId);
+          const mac = macrosFor(f, grams); (state.logs[ui.date][m.meal] = state.logs[ui.date][m.meal] || []).push({ ...old, grams, ...mac });
+          save(); closeModal(); render(); toast(t('Updated')); return;
+        }
+        addEntry(m.meal, f, grams); closeModal(); render(); toast(t('Added {name}', { name: foodName(f) }));
+      },
+      'entry-edit'() { const e = (state.logs[ui.date]?.[d.meal] || []).find((x) => x.id === d.id); if (!e) return; ui.modal = { type: 'addFood', meal: d.meal, origMeal: d.meal, search: '', foodId: e.foodId || 'entry', grams: e.grams, editId: e.id, entry: e }; renderModal(); },
+      'copy-meal'() { const src = state.logs[d.from]?.[d.meal] || []; if (!src.length) return; state.logs[ui.date] = state.logs[ui.date] || {}; const arr = state.logs[ui.date][d.meal] = state.logs[ui.date][d.meal] || []; for (const e of src) arr.push({ ...e, id: uid() }); save(); render(); toast(t('Copied {n} items', { n: src.length })); },
+      'save-meal'() { const items = (state.logs[ui.date]?.[d.meal] || []).map(({ foodId, name, grams, kcal, p, c, f }) => ({ foodId, name, grams, kcal, p, c, f })); if (!items.length) return; ui.modal = { type: 'saveMeal', meal: d.meal, items, name: '' }; renderModal(); },
+      'save-meal-confirm'() { const name = (m.name || '').trim(); if (!name) return toast(t('Name this meal')); state.meals.push({ id: uid(), name, items: m.items }); save(); closeModal(); toast(t('Meal saved')); },
+      'add-saved-meal'() { const sm = state.meals.find((x) => x.id === d.id); if (!sm) return; state.logs[ui.date] = state.logs[ui.date] || {}; const arr = state.logs[ui.date][m.meal] = state.logs[ui.date][m.meal] || []; for (const e of sm.items) arr.push({ ...e, id: uid() }); save(); closeModal(); render(); toast(t('Copied {n} items', { n: sm.items.length })); },
+      'del-saved-meal'() { confirm(t('Delete saved meal?'), '', () => { state.meals = state.meals.filter((x) => x.id !== d.id); save(); ui.modal = ui.modal.prev; renderModal(); }); },
+      'off-search'() { offSearch(d.q); },
+      'pick-off'() { const it = m.off && m.off.items[Number(d.i)]; if (!it) return; let f = it.barcode ? state.foods.find((x) => x.barcode === it.barcode) : null; if (!f) { f = { id: uid(), name: it.name, kcal: it.kcal, p: it.p, c: it.c, f: it.f, serving: it.serving || null, barcode: it.barcode || null, builtin: false }; state.foods.unshift(f); save(); } m.foodId = f.id; m.grams = null; renderModal(); },
       'entry-remove'() { const arr = state.logs[ui.date]?.[d.meal]; if (!arr) return; state.logs[ui.date][d.meal] = arr.filter((e) => e.id !== d.id); save(); render(); },
       'new-food'() { openFoodForm(null, d.meal ? { meal: d.meal } : null); },
       scan() { const rt = m?.type === 'addFood' ? { meal: m.meal } : m?.type === 'foodForm' ? m.returnTo : null; openScanner(rt); },
@@ -1133,6 +1258,8 @@
       'new-routine'() { openRoutineEditor(null); },
       'edit-routine'() { openRoutineEditor(d.id); },
       'rt-remove'() { m.draft.exercises.splice(Number(d.i), 1); renderModal(); },
+      'rt-move'() { if (el.disabled) return; const i = Number(d.i), j = i + Number(d.dir); const ex = m.draft.exercises; if (j < 0 || j >= ex.length) return; [ex[i], ex[j]] = [ex[j], ex[i]]; renderModal(); },
+      reload() { location.reload(); },
       'rt-add-exercise'() { openExercisePicker((ex) => { ui.modal.draft.exercises.push({ exId: ex.id, sets: 3, reps: '8-12' }); renderModal(); }); },
       'rt-save'() { const dr = m.draft; if (!dr.name.trim()) return toast(t('Name your routine')); if (!dr.exercises.length) return toast(t('Add at least one exercise')); dr.name = dr.name.trim(); const i = state.routines.findIndex((r) => r.id === dr.id); if (i >= 0) { if (dr.name === routineName(state.routines[i])) dr.name = state.routines[i].name; state.routines[i] = dr; } else state.routines.push(dr); save(); closeModal(); render(); toast(t('Routine saved')); },
       'rt-delete'() { confirm(t('Delete routine?'), t('Past workouts are kept.'), () => { state.routines = state.routines.filter((r) => r.id !== m.routineId); save(); closeModal(); render(); }); },
@@ -1163,7 +1290,7 @@
       reset() { confirm(t('Reset all data?'), t('Foods, logs, routines and workouts will be erased. Export first if you want a backup.') + (cloud.user ? ' ' + t('This device only. Your cloud data is kept; sign in again to get it back.') : ''), () => { const keepLang = state.settings.lang; if (cloud.user) { stopListeners(); clearTimeout(cloud.pushTimer); cloud.dirty.clear(); cloud.adapter.signOut().catch(() => {}); cloud.user = null; cloud.status = 'signedout'; } localStorage.removeItem(KEY); state = defaultState(); state.settings.lang = keepLang; sync.mtimes = {}; sync.uid = null; for (const k of Object.keys(snap)) delete snap[k]; syncInitSnapshot(); closeModal(); applyTheme(); render(); toast(t('Data reset')); }, t('Reset')); },
       'auth-signin'() { authAction('signIn'); },
       'auth-signup'() { authAction('signUp'); },
-      'auth-reset'() { const email = ui.auth.email.trim(); if (!email) return toast(t('Enter your email first')); cloud.adapter.resetPassword(email).then(() => toast(t('Password reset email sent'))).catch((e) => toast(describeErr(e))); },
+      'auth-reset'() { const email = ui.auth.email.trim(); if (!email) return toast(t('Enter your email first')); ensureCloud().then((okk) => okk && cloud.adapter.resetPassword(email)).then(() => cloud.adapter && toast(t('Password reset email sent'))).catch((e) => toast(describeErr(e))); },
       'auth-signout'() { cloud.adapter.signOut().then(() => toast(t('Signed out'))).catch((e) => toast(describeErr(e))); },
       'sync-cloud'() { const uid = m.uid; closeModal(); finishFirstSignIn(uid, 'cloud'); },
       'sync-device'() { const uid = m.uid; closeModal(); finishFirstSignIn(uid, 'device'); },
@@ -1179,7 +1306,7 @@
     const f = el.dataset.field, v = el.value, m = ui.modal;
     switch (f) {
       case 'food-search': m.search = v; $('#food-results').innerHTML = foodResultsHtml(v); break;
-      case 'food-grams': { m.grams = num(v, 0); const food = state.foods.find((x) => x.id === m.foodId); const mac = macrosFor(food, m.grams); $('#food-summary').innerHTML = summaryHtml(mac); $('[data-action=confirm-food]').textContent = t('Add {n} kcal', { n: fmtInt(mac.kcal) }); $$('.chip[data-action=food-chip]').forEach((c) => c.classList.toggle('active', Number(c.dataset.g) === m.grams)); break; }
+      case 'food-grams': { m.grams = num(v, 0); const food = modalFood(m); const mac = macrosFor(food, m.grams); $('#food-summary').innerHTML = summaryHtml(mac); $('[data-action=confirm-food]').textContent = m.editId ? t('Save') : t('Add {n} kcal', { n: fmtInt(mac.kcal) }); $$('.chip[data-action=food-chip]').forEach((c) => c.classList.toggle('active', Number(c.dataset.g) === m.grams)); break; }
       case 'food-meal': m.meal = v; break;
       case 'ff-name': m.draft.name = v; break;
       case 'ff-serving': m.draft.serving = v; { const b = $('[data-action=ff-basis][data-b=serving]'); if (b) b.disabled = !num(v, 0); } break;
@@ -1206,6 +1333,8 @@
       case 'pf-activity': state.settings.profile.activity = num(v); save(); render(); break;
       case 'pf-goal': state.settings.profile.goal = v; save(); render(); break;
       case 'auth-email': ui.auth.email = v; break;
+      case 'meal-name': m.name = v; break;
+      case 'progress-ex': ui.progressEx = v; render(); break;
       case 'auth-password': ui.auth.password = v; break;
     }
   });
@@ -1228,6 +1357,7 @@
     if (ev.key === 'Enter' && ui.modal?.type === 'addFood' && ui.modal.foodId && ev.target.id === 'food-grams') $('[data-action=confirm-food]').click();
     if (ev.key === 'Enter' && ev.target.id === 'weight-input') $('[data-action=log-weight]').click();
     if (ev.key === 'Enter' && ev.target.id === 'scan-manual') { ev.preventDefault(); $('[data-action=scan-manual]').click(); }
+    if (ev.key === 'Enter' && ev.target.id === 'meal-name') { ev.preventDefault(); $('[data-action=save-meal-confirm]').click(); }
   });
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 
@@ -1236,8 +1366,14 @@
   if (TABS.some(([id]) => id === hashTab)) ui.tab = hashTab;
   else if (state.activeWorkout) ui.tab = 'gym';
   syncInitSnapshot();
+  if (TEST) window.__FL = { get state() { return state; }, sync, cloud, snap };
   applyTheme();
   render();
   initCloud();
+  if (!TEST && 'serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      reg.addEventListener('updatefound', () => { const w = reg.installing; if (!w) return; w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) { const el = $('#toast'); el.innerHTML = `${t('New version available')} <button data-action="reload" style="margin-left:8px;font-weight:700;text-decoration:underline;color:inherit">${t('Reload')}</button>`; el.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (el.hidden = true), 12000); } }); });
+    }).catch(() => {});
+  }
   window.addEventListener('hashchange', () => { const tb = location.hash.replace('#', ''); if (TABS.some(([id]) => id === tb) && tb !== ui.tab) { ui.tab = tb; render(); } });
 })();
