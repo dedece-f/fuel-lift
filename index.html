@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f1115" />
+  <title>Fuel &amp; Lift</title>
+  <meta name="description" content="Simple calorie, macro and gym routine tracker. Data stays in your browser." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Fuel &amp; Lift</span>
+      </div>
+      <nav class="nav" id="nav-side" aria-label="Main"></nav>
+      <div class="sidebar-foot muted" id="sidebar-foot">Data is stored locally in this browser.</div>
+    </aside>
+
+    <main class="main" id="main" tabindex="-1"></main>
+
+    <nav class="tabbar" id="nav-bottom" aria-label="Main"></nav>
+  </div>
+
+  <div class="modal-root" id="modal-root" hidden>
+    <div class="modal-backdrop" data-action="modal-close"></div>
+    <div class="modal" role="dialog" aria-modal="true" id="modal"></div>
+  </div>
+
+  <div class="rest-pill" id="rest-pill" hidden></div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
