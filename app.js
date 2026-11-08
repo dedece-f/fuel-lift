@@ -760,10 +760,10 @@
       <div class="field"><label>${t('Name')}</label><input class="input" data-field="rt-name" value="${esc(d.name)}" placeholder="${t('e.g. Upper A')}" /></div>
       <div class="section-head" style="margin-top:16px"><h3>${t('Exercises')}</h3><button class="btn ghost sm" data-action="rt-add-exercise">${I.plus} ${t('Add')}</button></div>
       <div class="list">${d.exercises.length ? d.exercises.map((e, i) => `
-        <div class="list-item">
+        <div class="list-item rt-item">
           <div class="grow"><div class="title">${esc(exDisplay(e.exId))}</div><div class="sub">${esc(muscleName(exById(e.exId)?.muscle || ''))}</div></div>
-          <div class="input-suffix" style="width:72px"><input class="input" type="number" inputmode="numeric" value="${e.sets}" min="1" data-field="rt-sets" data-i="${i}" style="padding-right:36px;text-align:center" /><span>${t('sets')}</span></div>
-          <div class="input-suffix" style="width:86px"><input class="input" value="${esc(e.reps)}" data-field="rt-reps" data-i="${i}" placeholder="8-12" style="padding-right:36px;text-align:center" /><span>${t('reps')}</span></div>
+          <div class="input-suffix" data-w="sets" style="width:72px"><input class="input" type="number" inputmode="numeric" value="${e.sets}" min="1" data-field="rt-sets" data-i="${i}" style="padding-right:36px;text-align:center" /><span>${t('sets')}</span></div>
+          <div class="input-suffix" data-w="reps" style="width:86px"><input class="input" value="${esc(e.reps)}" data-field="rt-reps" data-i="${i}" placeholder="8-12" style="padding-right:36px;text-align:center" /><span>${t('reps')}</span></div>
           <div class="stack" style="gap:0"><button class="icon-btn" data-action="rt-move" data-i="${i}" data-dir="-1" aria-label="${t('Move up')}" ${i === 0 ? 'disabled style="opacity:.3"' : ''}>${I.up}</button><button class="icon-btn" data-action="rt-move" data-i="${i}" data-dir="1" aria-label="${t('Move down')}" ${i === d.exercises.length - 1 ? 'disabled style="opacity:.3"' : ''}>${I.down}</button></div>
           <button class="icon-btn danger" data-action="rt-remove" data-i="${i}" aria-label="${t('Remove')}">${I.x}</button>
         </div>`).join('') : `<div class="empty">${t('No exercises yet. Tap “Add” to pick from the library.')}</div>`}</div>

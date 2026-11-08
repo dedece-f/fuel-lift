@@ -148,7 +148,10 @@ input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-app
 @media (min-width: 900px) { .tabbar { display: none; } }
 
 /* ---------- Components ---------- */
-.page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.page-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 12px; margin-bottom: 18px; }
+.page-head > div:first-child { flex: 1 1 160px; min-width: 0; }
+.page-head .row { flex-wrap: wrap; }
+.page-head .row > .btn, .page-head .date-nav { margin-left: auto; }
 .page-head .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
 .section { margin-top: 24px; }
 .section-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; gap: 12px; }
@@ -446,7 +449,20 @@ details.hist .ex-line span:last-child { color: var(--text-2); font-variant-numer
 .setting-row:last-child { padding-bottom: 0; }
 .setting-row .lbl { font-weight: 500; }
 .setting-row .desc { font-size: 12.5px; color: var(--muted); }
-.setting-row .input { width: 110px; }
+.setting-row .input { width: 110px; flex-shrink: 0; }
+.setting-row > div:first-child { min-width: 0; }
+/* Phones: 16px inputs stop iOS from zooming the page when a field gets focus; keep content inside the viewport */
+@media (max-width: 899px) {
+  .input, select.input, .modal input, .modal select { font-size: 16px; }
+  .setting-row .input { width: 104px; }
+  .setting-row .input[data-field=pf-name] { width: 136px; }
+  /* routine editor: exercise name on its own line, controls below */
+  .rt-item { flex-wrap: wrap; row-gap: 8px; }
+  .rt-item .grow { flex-basis: 100%; }
+  .rt-item .input-suffix[data-w=sets] { width: 80px !important; }
+  .rt-item .input-suffix[data-w=reps] { width: 108px !important; }
+  .rt-item .stack { margin-left: auto; }
+}
 details.collapse summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; align-items: center; justify-content: space-between; }
 details.collapse summary::-webkit-details-marker { display: none; }
 details.collapse summary::after { content: "+"; color: var(--muted); font-size: 18px; }

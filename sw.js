@@ -1,7 +1,7 @@
 /* Fuel & Lift service worker: makes the app open offline and load instantly.
    Same-origin files are served from cache and refreshed in the background
    (stale-while-revalidate); the app shows a "new version" toast when an update lands. */
-const VERSION = 'fl-v7';
+const VERSION = 'fl-v8';
 const SHELL = ['./', './index.html', './styles.css', './app.js', './firebase-config.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
